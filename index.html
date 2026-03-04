@@ -183,16 +183,36 @@ const STORY = {
   90:"WARNING: Mini-Boss protocols activated. Elite NBC units deployed!",
   99:"One more. The Supreme NBC Core awaits."
 };
-const LEVEL_NAMES = ['','Entrance Hall','Dark Corridor','Storage Bay','Neon Alley','Laser Grid','Bot Factory','Circuit Room','Power Core','Data Stream','Outer Breach',
-'Guard Post','Assembly Line','Cooling Duct','Signal Tower','Reactor Wing','Training Room','Drone Bay','Security Hub','Access Tunnel','Deep Core',
-'Plasma Vent','Code Vault','Sync Chamber','Mech Bay','Quarter Mark','Sensor Array','Comm Station','Gravity Well','Phase Gate','Shield Room',
-'Ion Corridor','Photon Lab','Echo Chamber','Warp Node','Nano Forge','Pulse Grid','Arc Chamber','Flux Core','Dark Matter','Quantum Maze',
-'Tesla Hall','Beam Splitter','Prism Walk','Void Space','Cryo Lab','Fusion Ring','Anti-Matter','Core Access','Shadow Realm','COMMAND CENTER',
-'Inner Sanctum','Override Bay','Hack Suite','Bypass Node','Firewall','Zero Point','Null Space','Dead Zone','Ghost Lane','Phantom Core',
-'Neural Link','Synapse Walk','Mind Gate','Logic Bomb','Bit Storm','Byte Hall','Hex Maze','Stack Room','Buffer Zone','Overflow',
-'Kernel Panic','Root Access','Admin Tower','Sudo Room','Core Dump','Debug Hall','Trace Route','Ping Arena','Port Scan','Backdoor',
-'Exploit Den','Payload Bay','Trojan Hall','Virus Core','Worm Tunnel','Rootkit Room','Botnet Lair','DDoS Arena','Ransomware','ELITE SECTOR',
-'Elite Arena I','Elite Arena II','Elite Arena III','Elite Arena IV','Elite Arena V','Elite Arena VI','Elite Arena VII','Elite Arena VIII','Elite Arena IX','SUPREME NBC CORE'];
+const LEVEL_NAMES = [
+'', // 0 (unused)
+// 1-10: Tutorial / Intro
+'The Outpost','First Contact','Storage Bay','Neon Alley','Laser Grid',
+'Bot Factory','Circuit Room','Power Core','Data Stream','Outer Breach',
+// 11-30: Mid-game
+'Guard Post','Neon Tunnels','Cooling Duct','Signal Tower','Reactor Wing',
+'Grid Lock','Drone Bay','Security Hub','Access Tunnel','Deep Core',
+'Plasma Vent','Code Vault','Sync Chamber','Mech Bay','Quarter Mark',
+'Sensor Array','Comm Station','Gravity Well','Phase Gate','Shield Room',
+// 31-60: Hard zone
+'The Maze','Photon Lab','Echo Chamber','Warp Node','Nano Forge',
+'Static Fields','Arc Chamber','Flux Core','Dark Matter','Quantum Maze',
+'Tesla Hall','Beam Splitter','Prism Walk','Void Space','Cryo Lab',
+'Fusion Ring','Anti-Matter','Core Access','Shadow Realm','COMMAND CENTER',
+'Inner Sanctum','Override Bay','Hack Suite','Bypass Node','Firewall',
+'Zero Point','Null Space','Dead Zone','Ghost Lane','Phantom Core',
+// 61-89: Elite zone
+'NBC Command','Synapse Walk','Mind Gate','Logic Bomb','High Voltage',
+'Byte Hall','Hex Maze','Stack Room','Buffer Zone','Overflow',
+'Kernel Panic','Root Access','Admin Tower','Sudo Room','Core Dump',
+'Debug Hall','Trace Route','Ping Arena','Port Scan','Backdoor',
+'Exploit Den','Payload Bay','Trojan Hall','Virus Core','Worm Tunnel',
+'Rootkit Room','Botnet Lair','DDoS Arena','ELITE SECTOR',
+// 90-99: Mini-boss arenas
+'Elite Arena I','Elite Arena II','Elite Arena III','Elite Arena IV','Elite Arena V',
+'Elite Arena VI','Elite Arena VII','Elite Arena VIII','Elite Arena IX','Elite Arena X',
+// 100: Final boss
+'SUPREME NBC CORE'
+];
 function getLevelName(n){return LEVEL_NAMES[n]||('Sector '+n);}
 
 // ===== GAME STATE =====
@@ -247,15 +267,23 @@ function createPlayer() {
 function createNBC(x, z, elite, boss) {
   elite = elite || false;
   boss = boss || false;
-  const hp = boss ? 60 : (elite ? 15 : 3);
+  // NBC health scales: level 1=2, level 50=5-6, level 89=8
+  const baseHp = boss ? 60 : (elite ? 15 : Math.min(2 + Math.floor(currentLevel * 0.07), 8));
   const speed = boss ? 2.5 : (elite ? 3.5 : 1.8 + currentLevel * 0.035);
-  const shootInterval = boss ? 800 : (elite ? 800 : 2000 - Math.min(currentLevel * 15, 1400));
+  // Shoot interval: early(1-10)=3s, mid(11-50)=2s, late(51-89)=1.5s, mini-boss=1s
+  let shootInterval;
+  if(boss) { shootInterval = 800; }
+  else if(elite) { shootInterval = 1000; }
+  else if(currentLevel <= 10) { shootInterval = 3000; }
+  else if(currentLevel <= 50) { shootInterval = 2000; }
+  else { shootInterval = 1500; }
   return {
     x: x, z: z,
-    hp: hp, maxHp: hp, speed: speed,
+    hp: baseHp, maxHp: baseHp, speed: speed,
     lastShot: 0, shootInterval: shootInterval,
     elite: elite, boss: boss, flashTime: 0,
-    bossPhase: 0, bossPhaseTimer: 0, chargeDir: null, spawnedShields: false
+    bossPhase: 0, bossPhaseTimer: 0, chargeDir: null, spawnedShields: false,
+    wobbleAngle: 0, wobbleTimer: 0, shootPause: 0
   };
 }
 
@@ -272,8 +300,8 @@ function clearLevel() {
 function generateLevel(levelNum) {
   clearLevel();
 
-  roomW = 18 + Math.min(levelNum * 0.2, 12);
-  roomH = 18 + Math.min(levelNum * 0.2, 12);
+  roomW = 18 + Math.min(levelNum * 0.2, 10);
+  roomH = 18 + Math.min(levelNum * 0.2, 10);
 
   // Perimeter walls
   function addWall(cx, cz, w, h) {
@@ -293,8 +321,17 @@ function generateLevel(levelNum) {
     const wh = 1 + rng()*3;
     const wx = 3 + rng()*(roomW-6);
     const wz = 3 + rng()*(roomH-6);
-    if(wx < 4 && wz < 4) continue;
+    // Keep spawn area (top-left 4x4) clear
+    if(wx - ww/2 < 4 && wz - wh/2 < 4) continue;
     addWall(wx, wz, ww, wh);
+  }
+  // Ensure at least 60% of floor is open — remove walls if too dense
+  const totalTiles = roomW * roomH;
+  let wallArea = 0;
+  for(const w of walls) wallArea += w.w * w.h;
+  while(wallArea > totalTiles * 0.4 && walls.length > 4) {
+    const removed = walls.pop();
+    wallArea -= removed.w * removed.h;
   }
 
   // Neon lights on walls
@@ -312,7 +349,7 @@ function generateLevel(levelNum) {
   }
 
   // Towers
-  const towerCount = Math.min(Math.floor(levelNum/20), 5);
+  const towerCount = levelNum >= 5 ? Math.min(1 + Math.floor((levelNum - 5) / 15), 5) : 0;
   for(let i=0;i<towerCount;i++){
     const tx = 4 + rng()*(roomW-8);
     const tz = 4 + rng()*(roomH-8);
@@ -328,10 +365,15 @@ function generateLevel(levelNum) {
   if(levelNum === 100) {
     nbcs.push(createNBC(roomW/2, roomH/2, false, true));
   } else {
-    const nbcCount = Math.min(2 + Math.floor(levelNum/5), 15);
+    // Level 1: 2 NBCs, Level 10: ~4, scales smoothly up to 15
+    const nbcCount = Math.min(Math.floor(2 + (levelNum - 1) * 0.3), 15);
     for(let i=0;i<nbcCount;i++){
-      const nx = 5 + rng()*(roomW-8);
-      const nz = 5 + rng()*(roomH-8);
+      let nx, nz;
+      for(let attempt = 0; attempt < 20; attempt++) {
+        nx = 5 + rng()*(roomW-8);
+        nz = 5 + rng()*(roomH-8);
+        if(!checkWallCollision(nx, nz, 0.6)) break;
+      }
       nbcs.push(createNBC(nx, nz));
     }
     if(levelNum >= 90 && levelNum <= 99) {
@@ -339,17 +381,24 @@ function generateLevel(levelNum) {
     }
   }
 
-  // Key
-  const kx = roomW - 2 - rng()*4;
-  const kz = roomH - 2 - rng()*4;
+  // Key — place in bottom-right area, avoid walls
+  let kx, kz;
+  for(let attempt = 0; attempt < 30; attempt++) {
+    kx = roomW - 2 - rng()*4;
+    kz = roomH - 2 - rng()*4;
+    if(!checkWallCollision(kx, kz, 0.8)) break;
+  }
   keyObj = {x: kx, z: kz, rot: 0};
 
   // Shield pickups
   const shieldCount = 1 + (rng() > 0.5 ? 1 : 0);
   for(let i=0;i<shieldCount;i++){
-    const sx = 3 + rng()*(roomW-6);
-    const sz = 3 + rng()*(roomH-6);
-    if(sx < 4 && sz < 4) continue;
+    let sx, sz;
+    for(let attempt = 0; attempt < 20; attempt++) {
+      sx = 3 + rng()*(roomW-6);
+      sz = 3 + rng()*(roomH-6);
+      if(!(sx < 4 && sz < 4) && !checkWallCollision(sx, sz, 0.6)) break;
+    }
     shieldPickups.push({x: sx, z: sz, rot: 0});
   }
 
@@ -398,9 +447,9 @@ function slideMove(obj, dx, dz, radius) {
 
 // ===== LASERS =====
 function fireLaser(x, z, dx, dz, damage, color, fromPlayer) {
-  const speed = fromPlayer ? 28 : 16;
+  const speed = fromPlayer ? 18 : (currentLevel <= 10 ? 8 : (currentLevel <= 50 ? 9 : 10));
   const mag = Math.sqrt(dx*dx+dz*dz)||1;
-  lasers.push({x:x, z:z, dx:dx/mag*speed, dz:dz/mag*speed, damage:damage, color:color, fromPlayer:fromPlayer, life:2});
+  lasers.push({x:x, z:z, dx:dx/mag*speed, dz:dz/mag*speed, damage:damage, color:color, fromPlayer:fromPlayer, life:2, startX:x, startZ:z});
   if(fromPlayer) sfxShoot(getWeapon().colorName);
 }
 
@@ -573,8 +622,12 @@ function levelComplete() {
   save.bestLevel = Math.max(save.bestLevel, currentLevel);
   saveSave();
 
-  document.getElementById('lc-title').textContent = 'Level ' + (currentLevel-1) + ' Complete!';
-  document.getElementById('lc-tokens').textContent = '+' + tokens_earned_this_level + ' 🪙 (Total: ' + save.tokens + ')';
+  const completedLevel = currentLevel - 1;
+  document.getElementById('lc-title').textContent = 'LEVEL ' + completedLevel + ' COMPLETE!';
+  let tokenText = '+' + tokens_earned_this_level + ' 🪙 earned\nTotal: ' + save.tokens + ' 🪙';
+  const milestones = {10:'🔥 Outer walls breached!',25:'⚡ Quarter way there!',50:'🏆 HALFWAY! You legend!',75:'💀 The end is near...',89:'🚨 Elite sector unlocked!',99:'👑 One level to go!'};
+  if(milestones[completedLevel]) tokenText += '\n\n' + milestones[completedLevel];
+  document.getElementById('lc-tokens').innerHTML = tokenText.replace(/\n/g, '<br>');
   document.getElementById('levelcomplete-screen').classList.remove('hidden');
 }
 
