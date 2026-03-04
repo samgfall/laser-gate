@@ -769,8 +769,14 @@ document.getElementById('victory-btn').onclick = () => {
   document.getElementById('title-screen').classList.remove('hidden');
   gameState = 'title';
 };
+document.getElementById('story-ok').addEventListener('touchend', (e) => {
+  e.stopPropagation();
+  document.getElementById('story-popup').style.display = 'none';
+  paused = false;
+});
 document.getElementById('story-ok').onclick = () => {
   document.getElementById('story-popup').style.display = 'none';
+  paused = false;
 };
 
 function startLevel() {
@@ -786,6 +792,7 @@ function startLevel() {
   if(STORY[currentLevel]) {
     document.getElementById('story-text').textContent = STORY[currentLevel];
     document.getElementById('story-popup').style.display = 'block';
+    paused = true; // freeze game while story is showing
   }
 }
 
