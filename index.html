@@ -668,7 +668,10 @@ function openShop() {
     else btn.textContent = canBuy ? 'BUY' : '🔒 ' + w.cost + ' 🪙';
     if(!owned && !canBuy) btn.disabled = true;
     btn.onclick = () => {
-      if(!owned && canBuy) { save.tokens -= w.cost; save.ownedGuns.push(w.id); }
+      const now = Date.now();
+      if(now - lastPurchaseTime < 200) return;
+      lastPurchaseTime = now;
+      if(!owned && canBuy) { save.tokens = Math.max(0, save.tokens - w.cost); save.ownedGuns.push(w.id); }
       if(save.ownedGuns.includes(w.id)) save.equippedGun = w.id;
       saveSave(); openShop();
     };
@@ -692,7 +695,10 @@ function openShop() {
     else btn.textContent = canBuy ? 'BUY' : '🔒 ' + s.cost + ' 🪙';
     if(!owned && !canBuy) btn.disabled = true;
     btn.onclick = () => {
-      if(!owned && canBuy) { save.tokens -= s.cost; save.ownedSkins.push(s.id); }
+      const now = Date.now();
+      if(now - lastPurchaseTime < 200) return;
+      lastPurchaseTime = now;
+      if(!owned && canBuy) { save.tokens = Math.max(0, save.tokens - s.cost); save.ownedSkins.push(s.id); }
       if(save.ownedSkins.includes(s.id)) save.equippedSkin = s.id;
       saveSave(); openShop();
     };
@@ -1134,6 +1140,10 @@ function update(dt) {
     if(shieldActive <= 0) {
       shieldActive = 0;
       shieldDownFlash = 1.5;
+      sfxBuzzer();
+      const sdEl = document.getElementById('shield-down-msg');
+      sdEl.style.display = 'block';
+      setTimeout(() => { sdEl.style.display = 'none'; }, 1500);
     }
   }
   if(shieldDownFlash > 0) shieldDownFlash -= dt;
@@ -1226,6 +1236,9 @@ function update(dt) {
         }
         if(nbc.chargeDir) {
           slideMove(nbc, nbc.chargeDir.x*8*dt, nbc.chargeDir.z*8*dt, 2.5);
+          // Clamp boss to room bounds
+          nbc.x = Math.max(2.5, Math.min(roomW - 2.5, nbc.x));
+          nbc.z = Math.max(2.5, Math.min(roomH - 2.5, nbc.z));
           // Stop charging after 1s
           if(nbc.bossChargeTimer > 1) nbc.chargeDir = null;
         } else {
@@ -1330,11 +1343,20 @@ function update(dt) {
               spawnParticles(nbc.x, nbc.z, '#ff4400', 25);
               damageFlash = 0.06;
             }
-            save.tokens += reward;
-            tokens_earned_this_level += reward;
+            // Combo system
+            comboTimer = 3.0;
+            comboCount++;
+            let comboBonus = 0;
+            if(comboCount >= 2) {
+              comboBonus = comboCount;
+              showCombo(comboCount);
+            }
+
+            save.tokens += reward + comboBonus;
+            tokens_earned_this_level += reward + comboBonus;
             saveSave();
             updateHUD();
-            showTokenFloat(nbc.x, nbc.z, reward);
+            showTokenFloat(nbc.x, nbc.z, reward + comboBonus);
             nbcs.splice(j, 1);
             checkGateOpen();
           }
