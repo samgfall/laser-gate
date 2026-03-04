@@ -671,7 +671,7 @@ function openShop() {
       const now = Date.now();
       if(now - lastPurchaseTime < 200) return;
       lastPurchaseTime = now;
-      if(!owned && canBuy) { save.tokens = Math.max(0, save.tokens - w.cost); save.ownedGuns.push(w.id); }
+      if(!owned && canBuy) { save.tokens = Math.max(0, save.tokens - w.cost); if(!save.ownedGuns.includes(w.id)) save.ownedGuns.push(w.id); }
       if(save.ownedGuns.includes(w.id)) save.equippedGun = w.id;
       saveSave(); openShop();
     };
@@ -698,7 +698,7 @@ function openShop() {
       const now = Date.now();
       if(now - lastPurchaseTime < 200) return;
       lastPurchaseTime = now;
-      if(!owned && canBuy) { save.tokens = Math.max(0, save.tokens - s.cost); save.ownedSkins.push(s.id); }
+      if(!owned && canBuy) { save.tokens = Math.max(0, save.tokens - s.cost); if(!save.ownedSkins.includes(s.id)) save.ownedSkins.push(s.id); }
       if(save.ownedSkins.includes(s.id)) save.equippedSkin = s.id;
       saveSave(); openShop();
     };
@@ -714,7 +714,7 @@ document.getElementById('play-btn').onclick = () => {
   currentLevel = save.currentLevel;
   startLevel();
 };
-document.getElementById('best-display').textContent = save.bestLevel > 1 ? ('Best Level: ' + save.bestLevel) : '';
+document.getElementById('best-display').textContent = save.bestLevel > 1 ? ('Welcome back, Laser Knight! 🏆 Best Level: ' + save.bestLevel) : '';
 
 document.getElementById('next-btn').onclick = () => {
   document.getElementById('levelcomplete-screen').classList.add('hidden');
@@ -989,6 +989,20 @@ function showTokenFloat(wx, wz, amount) {
   div.style.top = sy + 'px';
   document.getElementById('damage-nums').appendChild(div);
   setTimeout(()=>div.remove(), 1000);
+}
+
+const KILL_MSGS = ['ZAPPED! ⚡','GOT EM! 💥','NICE SHOT! 🎯','BOOM! 💣','WRECKED! 🔥','POW! ✨','NAILED IT! 🎯','CRUSHED! 💀'];
+function showKillMsg(wx, wz) {
+  const msg = KILL_MSGS[Math.floor(Math.random()*KILL_MSGS.length)];
+  const sx = (wx - camX) * SCALE + canvas.width/2;
+  const sy = (wz - camY) * SCALE + canvas.height/2 - 50;
+  const div = document.createElement('div');
+  div.style.cssText = 'position:absolute;font-size:16px;color:#ff0;text-shadow:0 0 8px #f80;pointer-events:none;z-index:150;animation:dmgFloat 0.8s ease-out forwards;font-family:"Courier New",monospace;font-weight:bold;white-space:nowrap';
+  div.textContent = msg;
+  div.style.left = sx + 'px';
+  div.style.top = sy + 'px';
+  document.getElementById('damage-nums').appendChild(div);
+  setTimeout(()=>div.remove(), 800);
 }
 
 function showMiniBossMsg() {
@@ -1342,6 +1356,7 @@ function update(dt) {
             } else {
               spawnParticles(nbc.x, nbc.z, '#ff4400', 25);
               damageFlash = 0.06;
+              showKillMsg(nbc.x, nbc.z);
             }
             // Combo system
             comboTimer = 3.0;
