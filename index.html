@@ -667,8 +667,8 @@ document.addEventListener('touchcancel', handleTouchEnd, {passive:false});
 
 // Keyboard fallback
 const keys = {};
-document.addEventListener('keydown', e => { keys[e.key] = true; });
-document.addEventListener('keyup', e => { keys[e.key] = false; });
+document.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; keys[e.key] = true; });
+document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; keys[e.key] = false; });
 
 // ===== GAME LOOP =====
 let lastTime = 0;
@@ -1015,7 +1015,7 @@ function render() {
     ctx.shadowBlur = 8;
     ctx.shadowColor = wallColors[wi%2];
     ctx.strokeStyle = wallColors[wi%2];
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 3;
     ctx.strokeRect(w.x*SCALE, w.z*SCALE, w.w*SCALE, w.h*SCALE);
     ctx.restore();
   }
@@ -1084,6 +1084,16 @@ function render() {
     ctx.fill();
     ctx.restore();
     drawGlow(nbc.x*SCALE, nbc.z*SCALE, size*SCALE*0.85, color);
+    // Outer red glow ring for visibility
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#ff0000';
+    ctx.beginPath();
+    ctx.arc(nbc.x*SCALE, nbc.z*SCALE, size*SCALE*1.1, 0, Math.PI*2);
+    ctx.stroke();
+    ctx.restore();
 
     // Health bar for elite/boss
     if(nbc.elite || nbc.boss) {
@@ -1116,9 +1126,9 @@ function render() {
     if(visible) {
       // Shadow/outline skin
       if(skin.outline && shieldActive <= 0) {
-        drawGlow(player.x*SCALE, player.z*SCALE, 0.5*SCALE, skin.outline);
+        drawGlow(player.x*SCALE, player.z*SCALE, 0.55*SCALE, skin.outline);
       }
-      drawGlow(player.x*SCALE, player.z*SCALE, 0.4*SCALE, pcolor);
+      drawGlow(player.x*SCALE, player.z*SCALE, 0.45*SCALE, pcolor);
 
       // White dot for facing direction
       const dotDist = 0.3 * SCALE;
