@@ -754,11 +754,22 @@ document.getElementById('restart-btn').onclick = () => {
   startLevel();
 };
 // Pause button
+document.getElementById('pause-btn').addEventListener('touchend', (e) => {
+  e.stopPropagation();
+  if(gameState !== 'playing') return;
+  paused = true;
+  document.getElementById('pause-overlay').classList.remove('hidden');
+});
 document.getElementById('pause-btn').onclick = () => {
   if(gameState !== 'playing') return;
   paused = true;
   document.getElementById('pause-overlay').classList.remove('hidden');
 };
+document.getElementById('pause-overlay').addEventListener('touchend', (e) => {
+  e.stopPropagation();
+  paused = false;
+  document.getElementById('pause-overlay').classList.add('hidden');
+});
 document.getElementById('pause-overlay').onclick = () => {
   paused = false;
   document.getElementById('pause-overlay').classList.add('hidden');
