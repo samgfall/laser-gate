@@ -21,17 +21,24 @@ canvas{display:block;width:100%;height:100%}
 .backstory{max-width:600px;text-align:center;color:#888;font-size:14px;line-height:1.6;margin:10px 20px}
 .btn{background:none;border:2px solid #0ff;color:#0ff;padding:15px 40px;font-size:20px;font-family:'Courier New',monospace;cursor:pointer;pointer-events:auto;margin:10px;text-shadow:0 0 10px #0ff;box-shadow:0 0 15px rgba(0,255,255,0.3);transition:all 0.2s}
 .btn:active{background:#0ff;color:#000}
-.btn-buy{padding:8px 16px;font-size:14px;border-color:#0f0;color:#0f0}
+.btn-buy{padding:12px 20px;font-size:16px;border-color:#0f0;color:#0f0;min-height:44px;min-width:100px;border-radius:8px}
 .btn-buy:active{background:#0f0;color:#000}
-.btn-buy.equipped{border-color:#ff0;color:#ff0}
+.btn-buy.equipped{border-color:#ff0;color:#ff0;background:rgba(255,255,0,0.15)}
 .btn-buy:disabled{border-color:#555;color:#555;opacity:0.5}
-#shop-screen{overflow-y:auto}
-.shop-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;max-width:700px;padding:10px}
-.shop-item{background:rgba(255,255,255,0.05);border:1px solid #333;padding:12px;width:140px;text-align:center;border-radius:8px}
-.shop-item h4{font-size:13px;margin-bottom:4px}
-.shop-item .cost{color:#ff0;font-size:12px}
-.shop-item .stats{color:#888;font-size:11px;margin:4px 0}
+.btn-big{min-height:60px;width:100%;max-width:500px;font-size:22px;margin:8px auto;display:block}
+.btn-skip{border-color:#888;color:#888;font-size:16px}
+#shop-screen{overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:20px}
+.shop-grid{display:flex;flex-wrap:wrap;justify-content:center;gap:12px;max-width:700px;padding:10px}
+.shop-item{background:rgba(255,255,255,0.05);border:2px solid #333;padding:14px;width:155px;text-align:center;border-radius:10px;transition:border-color 0.2s}
+.shop-item.owned{border-color:#0f0}
+.shop-item.equipped-item{border-color:#ff0;background:rgba(255,255,0,0.08);box-shadow:0 0 12px rgba(255,255,0,0.2)}
+.shop-item.locked{opacity:0.6}
+.shop-item h4{font-size:14px;margin-bottom:6px}
+.shop-item .cost{color:#ff0;font-size:13px}
+.shop-item .stats{color:#888;font-size:12px;margin:6px 0}
 .shop-section{color:#0ff;font-size:18px;margin:10px 0 5px;width:100%;text-align:center}
+.lc-notification{color:#0f0;font-size:18px;margin:8px 0;animation:lcPulse 1s ease-in-out infinite}
+@keyframes lcPulse{0%,100%{opacity:1}50%{opacity:0.6}}
 #joystick-base{position:absolute;width:100px;height:100px;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.25);border-radius:50%;pointer-events:none;display:none}
 #joystick-stick{position:absolute;width:40px;height:40px;background:rgba(0,255,255,0.6);border:2px solid rgba(0,255,255,0.8);border-radius:50%;top:30px;left:30px;pointer-events:none;box-shadow:0 0 10px rgba(0,255,255,0.4)}
 #aim-indicator{position:absolute;bottom:60px;right:60px;width:120px;height:120px;border:2px solid rgba(255,0,100,0.3);border-radius:50%;pointer-events:none;display:none}
@@ -70,9 +77,11 @@ canvas{display:block;width:100%;height:100%}
 
   <div id="levelcomplete-screen" class="screen hidden">
     <h2 id="lc-title" style="color:#0f0;font-size:32px;margin-bottom:10px"></h2>
-    <div id="lc-tokens" style="color:#ff0;font-size:20px;margin-bottom:20px"></div>
-    <button class="btn" id="shop-btn">SHOP</button>
-    <button class="btn" id="next-btn">NEXT LEVEL</button>
+    <div id="lc-tokens" style="color:#ff0;font-size:20px;margin-bottom:10px"></div>
+    <div id="lc-first-level" style="display:none;color:#0ff;font-size:20px;margin:8px 0">Great job! You earned your first tokens! 🪙</div>
+    <div id="lc-new-item" class="lc-notification" style="display:none">💰 New item unlocked in shop!</div>
+    <button class="btn btn-big" id="next-btn">NEXT LEVEL ▶</button>
+    <button class="btn" id="shop-btn" style="margin-top:5px">🛒 SHOP</button>
   </div>
 
   <div id="shop-screen" class="screen hidden">
@@ -82,7 +91,8 @@ canvas{display:block;width:100%;height:100%}
     <div class="shop-grid" id="weapons-grid"></div>
     <div class="shop-section">🎨 SKINS</div>
     <div class="shop-grid" id="skins-grid"></div>
-    <button class="btn" id="shop-close">BACK</button>
+    <button class="btn btn-big" id="shop-next" style="margin-top:10px">NEXT LEVEL ▶</button>
+    <button class="btn btn-skip" id="shop-close" style="margin-bottom:20px">← BACK</button>
   </div>
 
   <div id="gameover-screen" class="screen hidden">
@@ -158,18 +168,18 @@ loadSave();
 // ===== WEAPONS & SKINS =====
 const WEAPONS = [
   {id:'pistol',name:'Laser Pistol',cost:0,damage:1,fireRate:600,type:'TAP',color:'#4488ff',colorName:'blue'},
-  {id:'pulse',name:'Pulse Blaster',cost:50,damage:2,fireRate:400,type:'TAP',color:'#00ff44',colorName:'green'},
-  {id:'zapper',name:'Rapid Zapper',cost:150,damage:1,fireRate:150,type:'AUTO',color:'#ffff00',colorName:'yellow'},
-  {id:'plasma',name:'Plasma Cannon',cost:400,damage:3,fireRate:700,type:'TAP',color:'#aa44ff',colorName:'purple'},
-  {id:'neon',name:'Neon Destroyer',cost:1000,damage:4,fireRate:180,type:'AUTO',color:'#ff1493',colorName:'hotpink'},
-  {id:'supreme',name:'Supreme Laser',cost:3000,damage:5,fireRate:100,type:'AUTO',color:'#ffffff',colorName:'white'}
+  {id:'pulse',name:'Pulse Blaster',cost:25,damage:2,fireRate:400,type:'TAP',color:'#00ff44',colorName:'green'},
+  {id:'zapper',name:'Rapid Zapper',cost:75,damage:1,fireRate:150,type:'AUTO',color:'#ffff00',colorName:'yellow'},
+  {id:'plasma',name:'Plasma Cannon',cost:200,damage:3,fireRate:700,type:'TAP',color:'#aa44ff',colorName:'purple'},
+  {id:'neon',name:'Neon Destroyer',cost:500,damage:4,fireRate:180,type:'AUTO',color:'#ff1493',colorName:'hotpink'},
+  {id:'supreme',name:'Supreme Laser',cost:1500,damage:5,fireRate:100,type:'AUTO',color:'#ffffff',colorName:'white'}
 ];
 const SKINS = [
   {id:'blue',name:'Blue Knight',cost:0,color:'#4488ff'},
-  {id:'red',name:'Red Racer',cost:100,color:'#ff2200'},
-  {id:'gold',name:'Gold Champion',cost:500,color:'#ffcc00'},
-  {id:'rainbow',name:'Rainbow Warrior',cost:1500,color:'#ffffff',rainbow:true},
-  {id:'shadow',name:'Shadow Ghost',cost:2000,color:'#220033',outline:'#aa00ff'}
+  {id:'red',name:'Red Racer',cost:50,color:'#ff2200'},
+  {id:'gold',name:'Gold Champion',cost:250,color:'#ffcc00'},
+  {id:'rainbow',name:'Rainbow Warrior',cost:750,color:'#ffffff',rainbow:true},
+  {id:'shadow',name:'Shadow Ghost',cost:1000,color:'#220033',outline:'#aa00ff'}
 ];
 function getWeapon() { return WEAPONS.find(w=>w.id===save.equippedGun)||WEAPONS[0]; }
 function getSkin() { return SKINS.find(s=>s.id===save.equippedSkin)||SKINS[0]; }
@@ -513,13 +523,13 @@ function openShop() {
     const equipped = save.equippedGun === w.id;
     const canBuy = save.tokens >= w.cost;
     const div = document.createElement('div');
-    div.className = 'shop-item';
-    div.innerHTML = '<h4 style="color:'+w.color+'">'+w.name+'</h4><div class="stats">DMG:'+w.damage+' | '+w.type+'</div><div class="cost">'+(w.cost===0?'FREE':w.cost+'🪙')+'</div>';
+    div.className = 'shop-item' + (equipped ? ' equipped-item' : (owned ? ' owned' : '')) + (!owned && !canBuy ? ' locked' : '');
+    div.innerHTML = '<h4 style="color:'+w.color+'">'+(equipped?'✅ ':'')+w.name+'</h4><div class="stats">DMG:'+w.damage+' | '+w.type+'</div><div class="cost">'+(w.cost===0?'FREE':w.cost+' 🪙')+'</div>';
     const btn = document.createElement('button');
     btn.className = 'btn btn-buy' + (equipped ? ' equipped' : '');
-    if(equipped) btn.textContent = '✓ EQUIPPED';
-    else if(owned) btn.textContent = 'EQUIP';
-    else btn.textContent = canBuy ? 'BUY' : '🔒 ' + w.cost;
+    if(equipped) btn.textContent = '✅ EQUIPPED';
+    else if(owned) btn.textContent = 'SWITCH';
+    else btn.textContent = canBuy ? 'BUY' : '🔒 ' + w.cost + ' 🪙';
     if(!owned && !canBuy) btn.disabled = true;
     btn.onclick = () => {
       if(!owned && canBuy) { save.tokens -= w.cost; save.ownedGuns.push(w.id); }
@@ -537,13 +547,13 @@ function openShop() {
     const equipped = save.equippedSkin === s.id;
     const canBuy = save.tokens >= s.cost;
     const div = document.createElement('div');
-    div.className = 'shop-item';
-    div.innerHTML = '<h4>'+s.name+'</h4><div class="cost">'+(s.cost===0?'FREE':s.cost+'🪙')+'</div>';
+    div.className = 'shop-item' + (equipped ? ' equipped-item' : (owned ? ' owned' : '')) + (!owned && !canBuy ? ' locked' : '');
+    div.innerHTML = '<h4>'+(equipped?'✅ ':'')+s.name+'</h4><div style="width:30px;height:30px;border-radius:50%;background:'+(s.rainbow?'linear-gradient(135deg,red,orange,yellow,green,blue,violet)':s.color)+';margin:6px auto;border:2px solid '+(s.outline||s.color)+'"></div><div class="cost">'+(s.cost===0?'FREE':s.cost+' 🪙')+'</div>';
     const btn = document.createElement('button');
     btn.className = 'btn btn-buy' + (equipped ? ' equipped' : '');
-    if(equipped) btn.textContent = '✓ EQUIPPED';
-    else if(owned) btn.textContent = 'EQUIP';
-    else btn.textContent = canBuy ? 'BUY' : '🔒 ' + s.cost;
+    if(equipped) btn.textContent = '✅ EQUIPPED';
+    else if(owned) btn.textContent = 'SWITCH';
+    else btn.textContent = canBuy ? 'BUY' : '🔒 ' + s.cost + ' 🪙';
     if(!owned && !canBuy) btn.disabled = true;
     btn.onclick = () => {
       if(!owned && canBuy) { save.tokens -= s.cost; save.ownedSkins.push(s.id); }
@@ -577,6 +587,10 @@ document.getElementById('shop-close').onclick = () => {
   document.getElementById('levelcomplete-screen').classList.remove('hidden');
   gameState = 'levelcomplete';
 };
+document.getElementById('shop-next').onclick = () => {
+  document.getElementById('shop-screen').classList.add('hidden');
+  startLevel();
+};
 document.getElementById('retry-btn').onclick = () => {
   document.getElementById('gameover-screen').classList.add('hidden');
   startLevel();
@@ -594,8 +608,9 @@ document.getElementById('story-ok').onclick = () => {
 function startLevel() {
   gameState = 'playing';
   document.getElementById('hud').style.display = 'block';
-  document.getElementById('joystick-base').style.display = 'block';
-  document.getElementById('aim-indicator').style.display = 'block';
+  // Joystick and aim are drawn on canvas now
+  document.getElementById('joystick-base').style.display = 'none';
+  document.getElementById('aim-indicator').style.display = 'none';
   generateLevel(currentLevel);
   if(STORY[currentLevel]) {
     document.getElementById('story-text').textContent = STORY[currentLevel];
@@ -633,6 +648,20 @@ function levelComplete() {
   const milestones = {10:'🔥 Outer walls breached!',25:'⚡ Quarter way there!',50:'🏆 HALFWAY! You legend!',75:'💀 The end is near...',89:'🚨 Elite sector unlocked!',99:'👑 One level to go!'};
   if(milestones[completedLevel]) tokenText += '\n\n' + milestones[completedLevel];
   document.getElementById('lc-tokens').innerHTML = tokenText.replace(/\n/g, '<br>');
+
+  // First level special message
+  const firstLevelEl = document.getElementById('lc-first-level');
+  firstLevelEl.style.display = completedLevel === 1 ? 'block' : 'none';
+
+  // Check if player can now afford something new
+  const allItems = [...WEAPONS, ...SKINS];
+  const canAffordNew = allItems.some(item => {
+    const owned = item.fireRate !== undefined ? save.ownedGuns.includes(item.id) : save.ownedSkins.includes(item.id);
+    return !owned && item.cost > 0 && save.tokens >= item.cost;
+  });
+  const newItemEl = document.getElementById('lc-new-item');
+  newItemEl.style.display = canAffordNew ? 'block' : 'none';
+
   document.getElementById('levelcomplete-screen').classList.remove('hidden');
 }
 
@@ -666,13 +695,11 @@ function handleTouchStart(e) {
       joystickTouch = t.identifier;
       joystickStart.x = t.clientX;
       joystickStart.y = t.clientY;
-      // Reposition joystick base to finger
-      const base = document.getElementById('joystick-base');
-      base.style.left = (t.clientX - 50) + 'px';
-      base.style.top = (t.clientY - 50) + 'px';
-      base.style.bottom = 'auto';
-      const stick = document.getElementById('joystick-stick');
-      stick.style.left = '30px'; stick.style.top = '30px';
+      joystickCurrent.x = t.clientX;
+      joystickCurrent.y = t.clientY;
+      joystickActive = true;
+      joystickDir.x = 0;
+      joystickDir.y = 0;
     } else if(t.clientX >= hw && aimTouch === null) {
       aimTouch = t.identifier;
       aimStart.x = t.clientX;
@@ -694,20 +721,17 @@ function handleTouchMove(e) {
       const dist = Math.sqrt(dx*dx+dy*dy);
       const maxDist = 50;
       const clamp = Math.min(dist, maxDist);
-      // Dead zone: 8px
-      if(dist > 8) {
-        joystickDir.x = (dx/dist)*clamp/maxDist;
-        joystickDir.y = (dy/dist)*clamp/maxDist;
+      // Dead zone: 10px — direction only (constant speed)
+      if(dist > 10) {
+        joystickDir.x = dx/dist;
+        joystickDir.y = dy/dist;
       } else {
         joystickDir.x = 0;
         joystickDir.y = 0;
       }
-      const stick = document.getElementById('joystick-stick');
-      // Clamp visual stick to 50px max from center (center is 30,30 in 100px base)
-      const vizX = (dx/Math.max(dist,1)) * clamp;
-      const vizY = (dy/Math.max(dist,1)) * clamp;
-      stick.style.left = (30 + vizX * 0.6) + 'px';
-      stick.style.top = (30 + vizY * 0.6) + 'px';
+      // Track clamped visual position
+      joystickCurrent.x = joystickStart.x + (dx/Math.max(dist,1)) * clamp;
+      joystickCurrent.y = joystickStart.y + (dy/Math.max(dist,1)) * clamp;
     }
     if(t.identifier === aimTouch) {
       aimCurrent.x = t.clientX;
@@ -724,14 +748,13 @@ function handleTouchMove(e) {
 }
 
 function handleTouchEnd(e) {
-  if(gameState !== 'playing') return;
   e.preventDefault();
+  if(gameState !== 'playing') return;
   for(const t of e.changedTouches) {
     if(t.identifier === joystickTouch) {
       joystickTouch = null;
+      joystickActive = false;
       joystickDir.x = 0; joystickDir.y = 0;
-      const stick = document.getElementById('joystick-stick');
-      stick.style.left = '40px'; stick.style.top = '40px';
     }
     if(t.identifier === aimTouch) {
       const w = getWeapon();
@@ -852,14 +875,19 @@ function update(dt) {
   }
 
   // AUTO weapon continuous fire
-  if(aimActive && getWeapon().type === 'AUTO') {
+  if(aimActive && getWeapon().type === 'AUTO' && player) {
+    // Fire toward the aim touch point (screen → world)
+    const ox2 = canvas.width/2 - camX * SCALE;
+    const oy2 = canvas.height/2 - camY * SCALE;
+    const aimWorldX = (aimCurrent.x - ox2) / SCALE;
+    const aimWorldZ = (aimCurrent.y - oy2) / SCALE;
+    const adx = aimWorldX - player.x;
+    const adz = aimWorldZ - player.z;
+    const adist = Math.sqrt(adx*adx+adz*adz);
     let fx, fz;
-    // Use joystick direction if active
-    if(Math.abs(joystickDir.x) > 0.1 || Math.abs(joystickDir.y) > 0.1) {
-      const mag = Math.sqrt(joystickDir.x*joystickDir.x + joystickDir.y*joystickDir.y);
-      fx = joystickDir.x/mag; fz = joystickDir.y/mag;
+    if(adist > 0.1) {
+      fx = adx/adist; fz = adz/adist;
     } else {
-      // Use last known direction
       fx = lastAimDir.x; fz = lastAimDir.y;
     }
     if(Math.abs(fx) > 0.01 || Math.abs(fz) > 0.01) {
@@ -1394,32 +1422,78 @@ function render() {
     ctx.restore();
   }
 
-  // Spinning crosshair for TAP weapon aiming
-  if(aimActive && getWeapon().type === 'TAP' && player) {
-    const cx = aimCurrent.x, cy = aimCurrent.y;
-    const rot = Date.now() * 0.003;
-    const armLen = 18;
+  // === Canvas-drawn joystick ===
+  if(joystickActive) {
+    // Base circle (semi-transparent cyan ring, 80px radius)
     ctx.save();
-    ctx.strokeStyle = '#00ffff';
+    ctx.strokeStyle = 'rgba(0,255,255,0.4)';
     ctx.lineWidth = 3;
-    ctx.shadowBlur = 12;
-    ctx.shadowColor = '#00ffff';
-    // 4 rotating arms (+ shape)
-    for(let i = 0; i < 4; i++) {
-      const a = rot + i * Math.PI / 2;
-      ctx.beginPath();
-      ctx.moveTo(cx + Math.cos(a)*6, cy + Math.sin(a)*6);
-      ctx.lineTo(cx + Math.cos(a)*armLen, cy + Math.sin(a)*armLen);
-      ctx.stroke();
-    }
-    // Outer ring
     ctx.beginPath();
-    ctx.arc(cx, cy, armLen + 4, 0, Math.PI*2);
-    ctx.lineWidth = 1.5;
+    ctx.arc(joystickStart.x, joystickStart.y, 50, 0, Math.PI*2);
+    ctx.stroke();
+    // Inner base fill
+    ctx.fillStyle = 'rgba(0,255,255,0.08)';
+    ctx.fill();
+    // Stick position (solid cyan circle, 20px radius)
+    ctx.fillStyle = 'rgba(0,255,255,0.6)';
+    ctx.strokeStyle = 'rgba(0,255,255,0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(joystickCurrent.x, joystickCurrent.y, 20, 0, Math.PI*2);
+    ctx.fill();
     ctx.stroke();
     ctx.restore();
+  }
 
-    // Targeting line from player to aim direction
+  // === Canvas-drawn crosshairs for aiming ===
+  if(aimActive && player) {
+    const cx = aimCurrent.x, cy = aimCurrent.y;
+    const w = getWeapon();
+    const rot = Date.now() * 0.003;
+
+    if(w.type === 'TAP') {
+      // Crosshairs: circle + cross lines
+      const armLen = 18;
+      ctx.save();
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 3;
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = '#00ffff';
+      // 4 rotating arms (+ shape)
+      for(let i = 0; i < 4; i++) {
+        const a = rot + i * Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(a)*6, cy + Math.sin(a)*6);
+        ctx.lineTo(cx + Math.cos(a)*armLen, cy + Math.sin(a)*armLen);
+        ctx.stroke();
+      }
+      // Outer ring
+      ctx.beginPath();
+      ctx.arc(cx, cy, armLen + 4, 0, Math.PI*2);
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      // AUTO weapon: pulsing red aim circle while firing
+      const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.015);
+      const radius = 16 + pulse * 8;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,' + Math.floor(50 + pulse*200) + ',0,' + (0.6 + pulse*0.4) + ')';
+      ctx.lineWidth = 3;
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = '#ff4400';
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI*2);
+      ctx.stroke();
+      // Inner dot
+      ctx.fillStyle = 'rgba(255,100,0,' + (0.4 + pulse*0.4) + ')';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 4, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Targeting line from player to aim point
     const px = player.x * SCALE + ox;
     const pz = player.z * SCALE + oy;
     const adx = cx - px, ady = cy - pz;
