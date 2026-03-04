@@ -13,7 +13,7 @@ canvas{display:block;width:100%;height:100%}
 #ui{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none}
 #hud{position:absolute;top:10px;left:10px;right:10px;display:none;z-index:10}
 #hearts{font-size:24px;float:left}
-#level-info{text-align:center;color:#0ff;font-size:16px;text-shadow:0 0 10px #0ff}
+#level-info{text-align:center;color:#0ff;font-size:20px;font-weight:bold;text-shadow:0 0 10px #0ff,0 0 20px #08f;letter-spacing:2px}
 #tokens{float:right;color:#ff0;font-size:20px;text-shadow:0 0 10px #ff0}
 .screen{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.92);color:#fff;pointer-events:auto;z-index:100}
 .screen.hidden{display:none}
@@ -355,7 +355,7 @@ function generateLevel(levelNum) {
   }
 
   // Neon lights on walls
-  const numLights = 5 + Math.floor(levelNum/5);
+  const numLights = Math.max(8, 5 + Math.floor(levelNum/5));
   const lightColors = ['#00ffff', '#ff00ff', '#00ff44'];
   for(let i=0;i<numLights;i++){
     const c = lightColors[i%3];
@@ -1207,12 +1207,20 @@ function render() {
   // Floor grid
   ctx.fillStyle = '#2d2d4a';
   ctx.fillRect(0, 0, roomW * SCALE, roomH * SCALE);
-  ctx.strokeStyle = 'rgba(100,100,150,0.15)';
-  ctx.lineWidth = 1;
+  // Grid lines with proximity glow near player
+  const gridPulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.002);
   for(let gx=0; gx<=roomW; gx++){
+    const distToPlayer = player ? Math.abs(gx - player.x) : 999;
+    const glow = distToPlayer < 3 ? (0.25 + 0.15 * gridPulse * (1 - distToPlayer/3)) : 0.12;
+    ctx.strokeStyle = 'rgba(58,58,96,' + glow + ')';
+    ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(gx*SCALE, 0); ctx.lineTo(gx*SCALE, roomH*SCALE); ctx.stroke();
   }
   for(let gz=0; gz<=roomH; gz++){
+    const distToPlayer = player ? Math.abs(gz - player.z) : 999;
+    const glow = distToPlayer < 3 ? (0.25 + 0.15 * gridPulse * (1 - distToPlayer/3)) : 0.12;
+    ctx.strokeStyle = 'rgba(58,58,96,' + glow + ')';
+    ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0, gz*SCALE); ctx.lineTo(roomW*SCALE, gz*SCALE); ctx.stroke();
   }
 
@@ -1240,45 +1248,93 @@ function render() {
     ctx.restore();
   }
 
-  // Neon wall lights
+  // Neon wall lights (bigger, glowier)
   for(const nl of neonLights) {
-    drawGlow(nl.x*SCALE, nl.z*SCALE, 4, nl.color);
+    ctx.save();
+    ctx.shadowBlur = 25;
+    ctx.shadowColor = nl.color;
+    ctx.fillStyle = nl.color;
+    ctx.beginPath();
+    ctx.arc(nl.x*SCALE, nl.z*SCALE, 5, 0, Math.PI*2);
+    ctx.fill();
+    // Extra glow halo
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath();
+    ctx.arc(nl.x*SCALE, nl.z*SCALE, 12, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
   }
 
   // Gate
   if(gateObj) {
     const gx = gateObj.x * SCALE;
     const gz = gateObj.z * SCALE;
+    const gatePulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.004);
     const gateColor = gateOpen ? '#00ff00' : '#880000';
     ctx.save();
-    ctx.shadowBlur = gateOpen ? 25 : 10;
+    ctx.shadowBlur = gateOpen ? 30 * gatePulse : 12;
     ctx.shadowColor = gateColor;
     ctx.fillStyle = gateColor;
-    ctx.fillRect(gx - 4, gz - 1.2*SCALE, 8, 2.4*SCALE);
+    ctx.globalAlpha = gateOpen ? (0.7 + 0.3 * gatePulse) : 0.8;
+    ctx.fillRect(gx - 6, gz - 1.2*SCALE, 12, 2.4*SCALE);
     // Arch top
     ctx.beginPath();
     ctx.arc(gx, gz - 1.2*SCALE, 0.6*SCALE, Math.PI, 0);
     ctx.fill();
+    ctx.globalAlpha = 1;
     ctx.restore();
     // Label
     ctx.save();
-    ctx.font = 'bold 12px monospace';
-    ctx.fillStyle = gateOpen ? '#00ff00' : '#ff0000';
+    ctx.font = 'bold 14px "Courier New", monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(gateOpen ? 'OPEN' : 'LOCKED', gx, gz + 2*SCALE);
+    if(gateOpen) {
+      ctx.fillStyle = '#00ff00';
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = '#00ff00';
+      ctx.fillText('EXIT →', gx, gz + 2*SCALE);
+    } else {
+      ctx.fillStyle = '#ff0000';
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = '#ff0000';
+      ctx.fillText('LOCKED 🔒', gx, gz + 2*SCALE);
+    }
     ctx.restore();
   }
 
-  // Key
+  // Key (larger golden star with label)
   if(keyObj && !hasKey) {
     const bob = Math.sin(Date.now()*0.003)*0.15*SCALE;
-    drawStar(keyObj.x*SCALE, keyObj.z*SCALE + bob, 5, 0.4*SCALE, 0.18*SCALE, keyObj.rot, '#ffdd00');
+    const keyPulse = 0.8 + 0.2 * Math.sin(Date.now()*0.005);
+    drawStar(keyObj.x*SCALE, keyObj.z*SCALE + bob, 5, 0.6*SCALE, 0.28*SCALE, keyObj.rot, '#ffdd00');
+    // Extra outer glow
+    ctx.save();
+    ctx.globalAlpha = 0.3 * keyPulse;
+    drawStar(keyObj.x*SCALE, keyObj.z*SCALE + bob, 5, 0.75*SCALE, 0.35*SCALE, keyObj.rot, '#ffaa00');
+    ctx.globalAlpha = 1;
+    ctx.restore();
+    // Label
+    ctx.save();
+    ctx.font = 'bold 14px "Courier New", monospace';
+    ctx.fillStyle = '#ffdd00';
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = '#ffdd00';
+    ctx.textAlign = 'center';
+    ctx.fillText('🗝️ KEY', keyObj.x*SCALE, keyObj.z*SCALE + bob - 0.8*SCALE);
+    ctx.restore();
   }
 
-  // Shield pickups
+  // Shield pickups (with label)
   for(const s of shieldPickups) {
     const bob = Math.sin(Date.now()*0.004)*0.1*SCALE;
-    drawHexagon(s.x*SCALE, s.z*SCALE + bob, 0.35*SCALE, s.rot, '#00ffff');
+    drawHexagon(s.x*SCALE, s.z*SCALE + bob, 0.4*SCALE, s.rot, '#00ffff');
+    ctx.save();
+    ctx.font = 'bold 12px "Courier New", monospace';
+    ctx.fillStyle = '#00ffff';
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = '#00ffff';
+    ctx.textAlign = 'center';
+    ctx.fillText('SHIELD', s.x*SCALE, s.z*SCALE + bob - 0.65*SCALE);
+    ctx.restore();
   }
 
   // NBCs
@@ -1315,16 +1371,51 @@ function render() {
     ctx.stroke();
     ctx.restore();
 
+    // Elite lightning effect (jagged lines around them)
+    if(nbc.elite && nbc.flashTime <= 0) {
+      ctx.save();
+      ctx.strokeStyle = '#ffaa00';
+      ctx.lineWidth = 2;
+      ctx.shadowBlur = 12;
+      ctx.shadowColor = '#ffaa00';
+      for(let li=0;li<4;li++){
+        const baseA = Date.now()*0.01 + li*Math.PI/2;
+        const sx = nbc.x*SCALE + Math.cos(baseA)*size*SCALE*1.2;
+        const sy = nbc.z*SCALE + Math.sin(baseA)*size*SCALE*1.2;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(sx + (Math.random()-0.5)*12, sy + (Math.random()-0.5)*12);
+        ctx.lineTo(sx + (Math.random()-0.5)*18, sy + (Math.random()-0.5)*18);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     // Health bar for elite/boss
     if(nbc.elite || nbc.boss) {
-      const barW = size*2*SCALE;
-      const barH = 4;
+      const barW = nbc.boss ? size*2.5*SCALE : size*2*SCALE;
+      const barH = nbc.boss ? 6 : 4;
       const bx = nbc.x*SCALE - barW/2;
-      const by = nbc.z*SCALE - size*SCALE - 10;
+      const by = nbc.z*SCALE + size*SCALE + 8;
       ctx.fillStyle = '#333';
       ctx.fillRect(bx, by, barW, barH);
-      ctx.fillStyle = '#ff0000';
+      ctx.fillStyle = nbc.boss ? '#ff0000' : '#ff6600';
       ctx.fillRect(bx, by, barW*(nbc.hp/nbc.maxHp), barH);
+      ctx.strokeStyle = '#666';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx, by, barW, barH);
+    }
+
+    // Boss name label
+    if(nbc.boss) {
+      ctx.save();
+      ctx.font = 'bold 16px "Courier New", monospace';
+      ctx.fillStyle = '#ff0000';
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = '#ff0000';
+      ctx.textAlign = 'center';
+      ctx.fillText('SUPREME NBC CORE', nbc.x*SCALE, nbc.z*SCALE - size*SCALE - 16);
+      ctx.restore();
     }
   }
 
@@ -1341,31 +1432,65 @@ function render() {
       pcolor = flash ? '#00ffff' : '#ffffff';
     }
 
+    // Breathing pulse
+    const breathe = Math.sin(Date.now() / 500) * 2;
+    const baseR = 0.45 * SCALE + breathe;
+    const isMoving = Math.abs(joystickDir.x) > 0.01 || Math.abs(joystickDir.y) > 0.01;
+
     // Visibility during invincibility
     const visible = playerInvincible <= 0 || Math.floor(playerInvincible * 10) % 2 === 0;
     if(visible) {
       // Shadow/outline skin
       if(skin.outline && shieldActive <= 0) {
-        drawGlow(player.x*SCALE, player.z*SCALE, 0.55*SCALE, skin.outline);
+        drawGlow(player.x*SCALE, player.z*SCALE, baseR + 4, skin.outline);
       }
-      drawGlow(player.x*SCALE, player.z*SCALE, 0.45*SCALE, pcolor);
+      // Main player glow
+      ctx.save();
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = pcolor;
+      ctx.fillStyle = pcolor;
+      ctx.beginPath();
+      ctx.arc(player.x*SCALE, player.z*SCALE, baseR, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+
+      // Idle rotating ring
+      if(!isMoving) {
+        const idleRot = Date.now() * 0.003;
+        ctx.save();
+        ctx.strokeStyle = pcolor;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = 0.5;
+        ctx.beginPath();
+        ctx.arc(player.x*SCALE, player.z*SCALE, baseR + 8, idleRot, idleRot + Math.PI*1.2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(player.x*SCALE, player.z*SCALE, baseR + 8, idleRot + Math.PI, idleRot + Math.PI*2.2);
+        ctx.stroke();
+        ctx.restore();
+      }
 
       // White dot for facing direction
-      const dotDist = 0.3 * SCALE;
+      const dotDist = baseR - 4;
+      ctx.save();
       ctx.fillStyle = '#ffffff';
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = '#ffffff';
       ctx.beginPath();
-      ctx.arc(player.x*SCALE + playerFaceX*dotDist, player.z*SCALE + playerFaceZ*dotDist, 4, 0, Math.PI*2);
+      ctx.arc(player.x*SCALE + playerFaceX*dotDist, player.z*SCALE + playerFaceZ*dotDist, 5, 0, Math.PI*2);
       ctx.fill();
+      ctx.restore();
 
-      // Shield ring
+      // Shield ring (pulsing)
       if(shieldActive > 0) {
+        const shPulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.006);
         ctx.save();
         ctx.strokeStyle = '#00ffff';
-        ctx.lineWidth = 2;
-        ctx.shadowBlur = 12;
+        ctx.lineWidth = 3;
+        ctx.shadowBlur = 18 * shPulse;
         ctx.shadowColor = '#00ffff';
         ctx.beginPath();
-        ctx.arc(player.x*SCALE, player.z*SCALE, 0.55*SCALE, 0, Math.PI*2);
+        ctx.arc(player.x*SCALE, player.z*SCALE, baseR + 6, 0, Math.PI*2);
         ctx.stroke();
         ctx.restore();
       }
@@ -1427,6 +1552,22 @@ function render() {
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
   }
+
+  // Scanline overlay (retro neon feel)
+  ctx.save();
+  ctx.globalAlpha = 0.06;
+  ctx.fillStyle = '#000000';
+  for(let sy=0; sy<H; sy+=3) {
+    ctx.fillRect(0, sy, W, 1);
+  }
+  ctx.restore();
+
+  // Vignette (darker edges)
+  const vigGrad = ctx.createRadialGradient(W/2, H/2, W*0.3, W/2, H/2, W*0.75);
+  vigGrad.addColorStop(0, 'rgba(0,0,0,0)');
+  vigGrad.addColorStop(1, 'rgba(0,0,0,0.5)');
+  ctx.fillStyle = vigGrad;
+  ctx.fillRect(0, 0, W, H);
 
   // === Canvas-drawn joystick ===
   if(joystickActive) {
