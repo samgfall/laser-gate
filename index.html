@@ -53,6 +53,47 @@ canvas{display:block;width:100%;height:100%}
 #key-found-msg{position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);font-size:48px;color:#ffdd00;text-shadow:0 0 30px #ffdd00,0 0 60px #ff8800;pointer-events:none;z-index:150;display:none;animation:keyPulse 1.5s ease-out forwards}
 @keyframes keyPulse{0%{opacity:0;transform:translate(-50%,-50%) scale(0.5)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.2)}30%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(1)}}
 #death-flash{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,0,0,0.6);pointer-events:none;z-index:90;display:none}
+#control-hint{position:absolute;bottom:8%;left:50%;transform:translateX(-50%);color:#888;font-size:14px;text-align:center;pointer-events:none;z-index:100;display:none}
+#rotate-prompt{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.92);display:none;align-items:center;justify-content:center;flex-direction:column;z-index:300;color:#0ff;font-size:20px;text-align:center;font-family:'Courier New',monospace;pointer-events:auto}
+#rotate-prompt .rotate-icon{font-size:64px;margin-bottom:20px;animation:rotSpin 2s ease-in-out infinite}
+@keyframes rotSpin{0%,100%{transform:rotate(0deg)}50%{transform:rotate(90deg)}}
+#rotate-prompt .dismiss-btn{color:#888;font-size:14px;margin-top:20px;cursor:pointer;pointer-events:auto;border:1px solid #888;padding:8px 16px;border-radius:6px}
+/* Phone-responsive scaling */
+@media(max-width:600px){
+  #title-screen h1{font-size:36px;letter-spacing:4px}
+  #title-screen .subtitle{font-size:13px}
+  .backstory{font-size:12px;line-height:1.4;margin:6px 15px}
+  .best-level{font-size:12px}
+  #hearts{font-size:18px}
+  #level-info{font-size:14px;letter-spacing:1px}
+  #tokens{font-size:14px}
+  .btn{padding:10px 24px;font-size:16px;margin:6px}
+  .btn-big{min-height:48px;font-size:18px;max-width:90%}
+  .btn-skip{font-size:14px}
+  .shop-item{width:130px;padding:10px}
+  .shop-item h4{font-size:12px}
+  .shop-item .cost{font-size:11px}
+  .shop-item .stats{font-size:10px}
+  .shop-section{font-size:15px}
+  .btn-buy{padding:8px 14px;font-size:13px;min-height:38px;min-width:80px}
+  .lc-notification{font-size:15px}
+  #story-popup{padding:20px;max-width:90%;font-size:15px}
+  .dmg-num{font-size:16px}
+  .token-float{font-size:14px}
+  #key-found-msg{font-size:32px}
+  #control-hint{font-size:12px}
+}
+@media(max-width:400px){
+  #title-screen h1{font-size:28px;letter-spacing:2px}
+  .backstory{font-size:11px;margin:4px 10px}
+  .btn{padding:8px 18px;font-size:14px}
+  .btn-big{font-size:16px}
+  .shop-item{width:110px;padding:8px}
+}
+/* Desktop crosshair cursor */
+body.desktop-input{cursor:crosshair}
+body.desktop-input .screen{cursor:default}
+body.desktop-input .btn,body.desktop-input .btn-buy{cursor:pointer}
 </style>
 </head>
 <body>
@@ -68,6 +109,13 @@ canvas{display:block;width:100%;height:100%}
   <div id="story-popup"><div id="story-text"></div><button class="btn" id="story-ok">OK</button></div>
   <div id="key-found-msg">KEY FOUND! 🗝️</div>
   <div id="death-flash"></div>
+
+  <div id="control-hint"></div>
+  <div id="rotate-prompt">
+    <div class="rotate-icon">📱</div>
+    <div>Rotate your phone to landscape<br>for the best experience!</div>
+    <div class="dismiss-btn" id="rotate-dismiss">Play in portrait anyway</div>
+  </div>
 
   <div id="title-screen" class="screen">
     <h1>LASER GATE</h1>
@@ -366,6 +414,17 @@ let bossDeathFlash = 0;
 let healthRestoredMsg = 0;
 let prevHealthBeforeLevel = 5;
 let roomW = 20, roomH = 20;
+
+// Input mode detection: 'touch' or 'mouse'
+let inputMode = 'touch';
+const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+const isPhone = hasTouch && Math.min(window.innerWidth, window.innerHeight) < 600;
+if(!hasTouch) inputMode = 'mouse';
+
+// Mouse state
+let mouseX = 0, mouseY = 0;
+let mouseActive = false; // true once mouse has moved (even on touch devices)
+let mouseDown = false;
 
 // Touch
 let joystickTouch = null;
@@ -922,7 +981,7 @@ function handleTouchMove(e) {
       const dx = t.clientX - joystickStart.x;
       const dy = t.clientY - joystickStart.y;
       const dist = Math.sqrt(dx*dx+dy*dy);
-      const maxDist = 50;
+      const maxDist = isPhone ? 35 : 50;
       const clamp = Math.min(dist, maxDist);
       // Dead zone: 10px — direction only (constant speed)
       if(dist > 10) {
@@ -998,10 +1057,37 @@ document.addEventListener('touchmove', handleTouchMove, {passive:false});
 document.addEventListener('touchend', handleTouchEnd, {passive:false});
 document.addEventListener('touchcancel', handleTouchEnd, {passive:false});
 
-// Keyboard fallback
+// Keyboard
 const keys = {};
 document.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; keys[e.key] = true; });
 document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; keys[e.key] = false; });
+
+// Mouse handlers for desktop aiming
+document.addEventListener('mousemove', e => {
+  mouseX = e.clientX;
+  mouseY = e.clientY;
+  if(!mouseActive) {
+    mouseActive = true;
+    inputMode = 'mouse';
+    document.body.classList.add('desktop-input');
+  }
+});
+document.addEventListener('mousedown', e => {
+  if(!mouseActive) return;
+  if(e.button === 0) mouseDown = true;
+});
+document.addEventListener('mouseup', e => {
+  if(!mouseActive) return;
+  if(e.button === 0) mouseDown = false;
+});
+// If user touches screen, switch back to touch mode
+document.addEventListener('touchstart', () => {
+  if(inputMode === 'mouse') {
+    inputMode = 'touch';
+    mouseActive = false;
+    document.body.classList.remove('desktop-input');
+  }
+}, {passive:true});
 
 // ===== GAME LOOP =====
 let lastTime = 0;
@@ -1108,16 +1194,60 @@ function update(dt) {
     if(mag > 0.001) { playerFaceX = mx/mag; playerFaceZ = mz/mag; lastAimDir.x = playerFaceX; lastAimDir.y = playerFaceZ; }
   }
 
-  // Keyboard shooting
-  if(keys[' ']) {
-    let fx=0, fz=-1, minD=Infinity;
-    for(const nbc of nbcs) {
-      const dx = nbc.x - player.x;
-      const dz = nbc.z - player.z;
-      const d = Math.sqrt(dx*dx+dz*dz);
-      if(d<minD){minD=d;fx=dx/d;fz=dz/d;}
+  // Mouse aiming: continuously face mouse cursor
+  if(mouseActive && player) {
+    const ox2 = canvas.width/2 - camX * SCALE;
+    const oy2 = canvas.height/2 - camY * SCALE;
+    const px = player.x * SCALE + ox2;
+    const pz = player.z * SCALE + oy2;
+    const mdx = mouseX - px;
+    const mdy = mouseY - pz;
+    const mdist = Math.sqrt(mdx*mdx+mdy*mdy);
+    if(mdist > 5) {
+      playerFaceX = mdx/mdist;
+      playerFaceZ = mdy/mdist;
+      lastAimDir.x = playerFaceX;
+      lastAimDir.y = playerFaceZ;
     }
-    playerShoot(fx, fz);
+  }
+
+  // Mouse click shooting
+  if(mouseActive && mouseDown && player) {
+    const ox2 = canvas.width/2 - camX * SCALE;
+    const oy2 = canvas.height/2 - camY * SCALE;
+    const px = player.x * SCALE + ox2;
+    const pz = player.z * SCALE + oy2;
+    const mdx = mouseX - px;
+    const mdy = mouseY - pz;
+    const mdist = Math.sqrt(mdx*mdx+mdy*mdy);
+    if(mdist > 5) {
+      playerShoot(mdx/mdist, mdy/mdist);
+    }
+  }
+
+  // Keyboard shooting (spacebar aims toward mouse if mouse active, else auto-aim)
+  if(keys[' ']) {
+    if(mouseActive && player) {
+      const ox2 = canvas.width/2 - camX * SCALE;
+      const oy2 = canvas.height/2 - camY * SCALE;
+      const px = player.x * SCALE + ox2;
+      const pz = player.z * SCALE + oy2;
+      const mdx = mouseX - px;
+      const mdy = mouseY - pz;
+      const mdist = Math.sqrt(mdx*mdx+mdy*mdy);
+      if(mdist > 5) {
+        playerShoot(mdx/mdist, mdy/mdist);
+      }
+    } else {
+      let fx=0, fz=-1, minD=Infinity;
+      for(const nbc of nbcs) {
+        const dx = nbc.x - player.x;
+        const dz = nbc.z - player.z;
+        const d = Math.sqrt(dx*dx+dz*dz);
+        if(d<minD){minD=d;fx=dx/d;fz=dz/d;}
+      }
+      playerShoot(fx, fz);
+    }
   }
 
   // AUTO weapon continuous fire
@@ -1828,7 +1958,7 @@ function render() {
     // Breathing pulse
     const breathe = Math.sin(Date.now() / 500) * 2;
     const baseR = 0.45 * SCALE + breathe;
-    const isMoving = Math.abs(joystickDir.x) > 0.01 || Math.abs(joystickDir.y) > 0.01;
+    const isMoving = Math.abs(joystickDir.x) > 0.01 || Math.abs(joystickDir.y) > 0.01 || keys['w'] || keys['a'] || keys['s'] || keys['d'] || keys['arrowup'] || keys['arrowdown'] || keys['arrowleft'] || keys['arrowright'];
 
     // Visibility during invincibility
     const visible = playerInvincible <= 0 || Math.floor(playerInvincible * 10) % 2 === 0;
@@ -2007,73 +2137,70 @@ function render() {
   ctx.fillStyle = vigGrad;
   ctx.fillRect(0, 0, W, H);
 
-  // === Canvas-drawn joystick ===
-  if(joystickActive) {
-    // Base circle (semi-transparent cyan ring, 80px radius)
+  // Phone-aware scaling for touch UI
+  const uiScale = isPhone ? 0.7 : 1;
+
+  // === Canvas-drawn joystick (touch only) ===
+  if(joystickActive && inputMode === 'touch') {
+    const baseR = 50 * uiScale;
+    const stickR = 20 * uiScale;
     ctx.save();
     ctx.strokeStyle = 'rgba(0,255,255,0.4)';
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3 * uiScale;
     ctx.beginPath();
-    ctx.arc(joystickStart.x, joystickStart.y, 50, 0, Math.PI*2);
+    ctx.arc(joystickStart.x, joystickStart.y, baseR, 0, Math.PI*2);
     ctx.stroke();
-    // Inner base fill
     ctx.fillStyle = 'rgba(0,255,255,0.08)';
     ctx.fill();
-    // Stick position (solid cyan circle, 20px radius)
     ctx.fillStyle = 'rgba(0,255,255,0.6)';
     ctx.strokeStyle = 'rgba(0,255,255,0.8)';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * uiScale;
     ctx.beginPath();
-    ctx.arc(joystickCurrent.x, joystickCurrent.y, 20, 0, Math.PI*2);
+    ctx.arc(joystickCurrent.x, joystickCurrent.y, stickR, 0, Math.PI*2);
     ctx.fill();
     ctx.stroke();
     ctx.restore();
   }
 
-  // === Canvas-drawn crosshairs for aiming ===
-  if(aimActive && player) {
+  // === Canvas-drawn crosshairs for touch aiming ===
+  if(aimActive && player && inputMode === 'touch') {
     const cx = aimCurrent.x, cy = aimCurrent.y;
     const w = getWeapon();
     const rot = Date.now() * 0.003;
 
     if(w.type === 'TAP') {
-      // Crosshairs: circle + cross lines
-      const armLen = 18;
+      const armLen = 18 * uiScale;
       ctx.save();
       ctx.strokeStyle = '#00ffff';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3 * uiScale;
       ctx.shadowBlur = 12;
       ctx.shadowColor = '#00ffff';
-      // 4 rotating arms (+ shape)
       for(let i = 0; i < 4; i++) {
         const a = rot + i * Math.PI / 2;
         ctx.beginPath();
-        ctx.moveTo(cx + Math.cos(a)*6, cy + Math.sin(a)*6);
+        ctx.moveTo(cx + Math.cos(a)*6*uiScale, cy + Math.sin(a)*6*uiScale);
         ctx.lineTo(cx + Math.cos(a)*armLen, cy + Math.sin(a)*armLen);
         ctx.stroke();
       }
-      // Outer ring
       ctx.beginPath();
-      ctx.arc(cx, cy, armLen + 4, 0, Math.PI*2);
-      ctx.lineWidth = 1.5;
+      ctx.arc(cx, cy, armLen + 4*uiScale, 0, Math.PI*2);
+      ctx.lineWidth = 1.5 * uiScale;
       ctx.stroke();
       ctx.restore();
     } else {
-      // AUTO weapon: pulsing red aim circle while firing
       const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.015);
-      const radius = 16 + pulse * 8;
+      const radius = (16 + pulse * 8) * uiScale;
       ctx.save();
       ctx.strokeStyle = 'rgba(255,' + Math.floor(50 + pulse*200) + ',0,' + (0.6 + pulse*0.4) + ')';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3 * uiScale;
       ctx.shadowBlur = 15;
       ctx.shadowColor = '#ff4400';
       ctx.beginPath();
       ctx.arc(cx, cy, radius, 0, Math.PI*2);
       ctx.stroke();
-      // Inner dot
       ctx.fillStyle = 'rgba(255,100,0,' + (0.4 + pulse*0.4) + ')';
       ctx.beginPath();
-      ctx.arc(cx, cy, 4, 0, Math.PI*2);
+      ctx.arc(cx, cy, 4*uiScale, 0, Math.PI*2);
       ctx.fill();
       ctx.restore();
     }
@@ -2095,6 +2222,46 @@ function render() {
       ctx.restore();
     }
   }
+
+  // === Desktop mouse crosshair (rendered on canvas, not CSS) ===
+  if(mouseActive && inputMode === 'mouse' && player) {
+    const rot = Date.now() * 0.003;
+    const armLen = 14;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,255,255,0.7)';
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = '#00ffff';
+    for(let i = 0; i < 4; i++) {
+      const a = rot + i * Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(mouseX + Math.cos(a)*5, mouseY + Math.sin(a)*5);
+      ctx.lineTo(mouseX + Math.cos(a)*armLen, mouseY + Math.sin(a)*armLen);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.arc(mouseX, mouseY, 2, 0, Math.PI*2);
+    ctx.fillStyle = '#00ffff';
+    ctx.fill();
+    ctx.restore();
+
+    // Targeting line from player to mouse
+    const px = player.x * SCALE + ox;
+    const pz = player.z * SCALE + oy;
+    const mdx = mouseX - px, mdy = mouseY - pz;
+    const mdist = Math.sqrt(mdx*mdx+mdy*mdy);
+    if(mdist > 30) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,255,255,0.15)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([6,6]);
+      ctx.beginPath();
+      ctx.moveTo(px, pz);
+      ctx.lineTo(mouseX, mouseY);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
 }
 
 function animate(time) {
@@ -2106,6 +2273,73 @@ function animate(time) {
 }
 
 requestAnimationFrame(animate);
+
+// ===== CONTROL HINTS & ORIENTATION =====
+(function() {
+  // Show control hint on title screen
+  const hintEl = document.getElementById('control-hint');
+  function updateControlHint() {
+    if(inputMode === 'mouse') {
+      hintEl.textContent = 'WASD to move, Mouse to aim and shoot';
+    } else {
+      hintEl.textContent = 'Left thumb to move, Right thumb to aim and shoot';
+    }
+  }
+  updateControlHint();
+
+  // Show hint when title screen is visible
+  const titleScreen = document.getElementById('title-screen');
+  const observer = new MutationObserver(() => {
+    const visible = !titleScreen.classList.contains('hidden');
+    hintEl.style.display = visible ? 'block' : 'none';
+    if(visible) updateControlHint();
+  });
+  observer.observe(titleScreen, {attributes: true, attributeFilter: ['class']});
+  // Initial state
+  hintEl.style.display = 'block';
+
+  // Rotate prompt for phones in portrait
+  const rotatePrompt = document.getElementById('rotate-prompt');
+  let rotatePromptDismissed = false;
+  document.getElementById('rotate-dismiss').addEventListener('click', () => {
+    rotatePromptDismissed = true;
+    rotatePrompt.style.display = 'none';
+  });
+  document.getElementById('rotate-dismiss').addEventListener('touchend', (e) => {
+    e.stopPropagation();
+    rotatePromptDismissed = true;
+    rotatePrompt.style.display = 'none';
+  });
+
+  function checkOrientation() {
+    if(!isPhone || rotatePromptDismissed) return;
+    if(window.innerHeight > window.innerWidth) {
+      rotatePrompt.style.display = 'flex';
+    } else {
+      rotatePrompt.style.display = 'none';
+    }
+  }
+  checkOrientation();
+  window.addEventListener('resize', checkOrientation);
+  window.addEventListener('orientationchange', () => setTimeout(checkOrientation, 200));
+
+  // Update play button text for desktop
+  if(inputMode === 'mouse') {
+    document.getElementById('play-btn').textContent = 'PLAY';
+  }
+})();
+
+// ===== TIP MESSAGE SCALING =====
+(function() {
+  const tipEl = document.getElementById('tip-msg');
+  if(isPhone) {
+    tipEl.style.fontSize = '14px';
+  }
+  // Update tip text based on input mode
+  if(inputMode === 'mouse') {
+    tipEl.innerHTML = 'Tip: Use WASD to move, mouse to aim and click to shoot!<br>Find the KEY 🗝️ and reach the EXIT!';
+  }
+})();
 </script>
 </body>
 </html>
