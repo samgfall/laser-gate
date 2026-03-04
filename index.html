@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>LASER GATE</title>
@@ -32,9 +32,9 @@ canvas{display:block;width:100%;height:100%}
 .shop-item .cost{color:#ff0;font-size:12px}
 .shop-item .stats{color:#888;font-size:11px;margin:4px 0}
 .shop-section{color:#0ff;font-size:18px;margin:10px 0 5px;width:100%;text-align:center}
-#joystick-base{position:absolute;bottom:60px;left:60px;width:120px;height:120px;border:2px solid rgba(0,255,255,0.2);border-radius:50%;pointer-events:none;display:none}
-#joystick-stick{position:absolute;width:40px;height:40px;background:rgba(0,255,255,0.4);border-radius:50%;top:40px;left:40px;pointer-events:none}
-#aim-indicator{position:absolute;bottom:60px;right:60px;width:120px;height:120px;border:2px solid rgba(255,0,100,0.2);border-radius:50%;pointer-events:none;display:none}
+#joystick-base{position:absolute;width:100px;height:100px;background:rgba(255,255,255,0.15);border:2px solid rgba(255,255,255,0.25);border-radius:50%;pointer-events:none;display:none}
+#joystick-stick{position:absolute;width:40px;height:40px;background:rgba(0,255,255,0.6);border:2px solid rgba(0,255,255,0.8);border-radius:50%;top:30px;left:30px;pointer-events:none;box-shadow:0 0 10px rgba(0,255,255,0.4)}
+#aim-indicator{position:absolute;bottom:60px;right:60px;width:120px;height:120px;border:2px solid rgba(255,0,100,0.3);border-radius:50%;pointer-events:none;display:none}
 #story-popup{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,0.95);border:2px solid #0ff;padding:30px;max-width:500px;text-align:center;color:#0ff;font-size:18px;line-height:1.6;display:none;z-index:200;pointer-events:auto;box-shadow:0 0 40px rgba(0,255,255,0.3)}
 #story-popup .btn{margin-top:15px}
 #damage-nums{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:50}
@@ -248,12 +248,16 @@ let roomW = 20, roomH = 20;
 // Touch
 let joystickTouch = null;
 let joystickStart = {x:0,y:0};
+let joystickCurrent = {x:0,y:0};
 let joystickDir = {x:0,y:0};
+let joystickActive = false;
 let aimTouch = null;
 let aimStart = {x:0, y:0};
+let aimCurrent = {x:0, y:0};
 let aimDir = {x:0, y:0};
 let aimActive = false;
 let lastFireTime = 0;
+let lastAimDir = {x:0, y:-1};
 
 // Player facing direction for rendering
 let playerFaceX = 0, playerFaceZ = -1;
@@ -407,6 +411,7 @@ function generateLevel(levelNum) {
 
   levelStartTime = Date.now();
   tokens_earned_this_level = 0;
+  gracePeriod = 1.5;
   updateHUD();
 }
 
@@ -646,14 +651,23 @@ function handleTouchStart(e) {
   e.preventDefault();
   for(const t of e.changedTouches) {
     const hw = window.innerWidth / 2;
-    if(t.clientX < hw && !joystickTouch) {
+    if(t.clientX < hw && joystickTouch === null) {
       joystickTouch = t.identifier;
       joystickStart.x = t.clientX;
       joystickStart.y = t.clientY;
-    } else if(t.clientX >= hw && !aimTouch) {
+      // Reposition joystick base to finger
+      const base = document.getElementById('joystick-base');
+      base.style.left = (t.clientX - 50) + 'px';
+      base.style.top = (t.clientY - 50) + 'px';
+      base.style.bottom = 'auto';
+      const stick = document.getElementById('joystick-stick');
+      stick.style.left = '30px'; stick.style.top = '30px';
+    } else if(t.clientX >= hw && aimTouch === null) {
       aimTouch = t.identifier;
       aimStart.x = t.clientX;
       aimStart.y = t.clientY;
+      aimPos.x = t.clientX;
+      aimPos.y = t.clientY;
       aimActive = true;
     }
   }
@@ -669,13 +683,24 @@ function handleTouchMove(e) {
       const dist = Math.sqrt(dx*dx+dy*dy);
       const maxDist = 50;
       const clamp = Math.min(dist, maxDist);
-      joystickDir.x = dist > 2 ? (dx/dist)*clamp/maxDist : 0;
-      joystickDir.y = dist > 2 ? (dy/dist)*clamp/maxDist : 0;
+      // Dead zone: 8px
+      if(dist > 8) {
+        joystickDir.x = (dx/dist)*clamp/maxDist;
+        joystickDir.y = (dy/dist)*clamp/maxDist;
+      } else {
+        joystickDir.x = 0;
+        joystickDir.y = 0;
+      }
       const stick = document.getElementById('joystick-stick');
-      stick.style.left = (40 + joystickDir.x * 40) + 'px';
-      stick.style.top = (40 + joystickDir.y * 40) + 'px';
+      // Clamp visual stick to 50px max from center (center is 30,30 in 100px base)
+      const vizX = (dx/Math.max(dist,1)) * clamp;
+      const vizY = (dy/Math.max(dist,1)) * clamp;
+      stick.style.left = (30 + vizX * 0.6) + 'px';
+      stick.style.top = (30 + vizY * 0.6) + 'px';
     }
     if(t.identifier === aimTouch) {
+      aimPos.x = t.clientX;
+      aimPos.y = t.clientY;
       const dx = t.clientX - aimStart.x;
       const dy = t.clientY - aimStart.y;
       const dist = Math.sqrt(dx*dx+dy*dy);
@@ -700,13 +725,19 @@ function handleTouchEnd(e) {
     if(t.identifier === aimTouch) {
       const w = getWeapon();
       if(w.type === 'TAP') {
-        const dx = t.clientX - aimStart.x;
-        const dy = t.clientY - aimStart.y;
+        // Fire toward where finger is relative to player on screen
+        const ox2 = canvas.width/2 - camX * SCALE;
+        const oy2 = canvas.height/2 - camY * SCALE;
+        const px = player.x * SCALE + ox2;
+        const pz = player.z * SCALE + oy2;
+        const dx = t.clientX - px;
+        const dy = t.clientY - pz;
         const dist = Math.sqrt(dx*dx+dy*dy);
         let fx, fz;
         if(dist > 10) {
           fx = dx/dist; fz = dy/dist;
         } else {
+          // Auto-aim at nearest NBC
           fx = 0; fz = -1;
           let minD = Infinity;
           for(const nbc of nbcs) {
@@ -716,6 +747,7 @@ function handleTouchEnd(e) {
             if(d < minD) { minD = d; fx = ddx/d; fz = ddz/d; }
           }
         }
+        lastAimDir.x = fx; lastAimDir.y = fz;
         playerShoot(fx, fz);
       }
       aimTouch = null;
@@ -737,8 +769,47 @@ document.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; key
 // ===== GAME LOOP =====
 let lastTime = 0;
 
+function showTokenFloat(wx, wz, amount) {
+  const sx = (wx - camX) * SCALE + canvas.width/2;
+  const sy = (wz - camY) * SCALE + canvas.height/2 - 30;
+  const div = document.createElement('div');
+  div.className = 'token-float';
+  div.textContent = '+' + amount + ' tokens';
+  div.style.left = sx + 'px';
+  div.style.top = sy + 'px';
+  document.getElementById('damage-nums').appendChild(div);
+  setTimeout(()=>div.remove(), 1000);
+}
+
+function showKeyFound() {
+  const el = document.getElementById('key-found-msg');
+  el.style.display = 'block';
+  el.style.animation = 'none';
+  el.offsetHeight; // reflow
+  el.style.animation = 'keyPulse 1.5s ease-out forwards';
+  setTimeout(()=>{ el.style.display = 'none'; }, 1500);
+}
+
+function spawnExplosionParticles(x, z) {
+  const colors = ['#ff0000','#ff8800','#ffff00','#00ff44','#00ffff','#ff00ff','#ffffff','#ff4488'];
+  for(let i=0;i<8;i++){
+    const angle = i * Math.PI/4;
+    const speed = 5;
+    particles.push({x:x, z:z, dx:Math.cos(angle)*speed, dz:Math.sin(angle)*speed, life:0.5, color:colors[i], square:true});
+  }
+}
+
 function update(dt) {
   if(gameState !== 'playing' || !player) return;
+
+  // Death freeze
+  if(deathFreezeTimer > 0) {
+    deathFreezeTimer -= dt;
+    return;
+  }
+
+  // Grace period countdown
+  if(gracePeriod > 0) gracePeriod -= dt;
 
   const playerSpeed = 5;
   let mx = 0, mz = 0;
@@ -754,7 +825,7 @@ function update(dt) {
   if(mx || mz) {
     slideMove(player, mx, mz);
     const mag = Math.sqrt(mx*mx+mz*mz);
-    if(mag > 0.001) { playerFaceX = mx/mag; playerFaceZ = mz/mag; }
+    if(mag > 0.001) { playerFaceX = mx/mag; playerFaceZ = mz/mag; lastAimDir.x = playerFaceX; lastAimDir.y = playerFaceZ; }
   }
 
   // Keyboard shooting
@@ -771,17 +842,19 @@ function update(dt) {
 
   // AUTO weapon continuous fire
   if(aimActive && getWeapon().type === 'AUTO') {
-    let fx = aimDir.x, fz = aimDir.y;
-    if(Math.abs(fx) < 0.01 && Math.abs(fz) < 0.01) {
-      let minD = Infinity;
-      for(const nbc of nbcs) {
-        const dx = nbc.x - player.x;
-        const dz = nbc.z - player.z;
-        const d = Math.sqrt(dx*dx+dz*dz);
-        if(d<minD){minD=d;fx=dx/d;fz=dz/d;}
-      }
+    let fx, fz;
+    // Use joystick direction if active
+    if(Math.abs(joystickDir.x) > 0.1 || Math.abs(joystickDir.y) > 0.1) {
+      const mag = Math.sqrt(joystickDir.x*joystickDir.x + joystickDir.y*joystickDir.y);
+      fx = joystickDir.x/mag; fz = joystickDir.y/mag;
+    } else {
+      // Use last known direction
+      fx = lastAimDir.x; fz = lastAimDir.y;
     }
-    playerShoot(fx, fz);
+    if(Math.abs(fx) > 0.01 || Math.abs(fz) > 0.01) {
+      lastAimDir.x = fx; lastAimDir.y = fz;
+      playerShoot(fx, fz);
+    }
   }
 
   // Player invincibility
@@ -798,6 +871,7 @@ function update(dt) {
       hasKey = true;
       keyObj = null;
       sfxPickup();
+      showKeyFound();
       checkGateOpen();
     }
   }
@@ -1289,6 +1363,49 @@ function render() {
     ctx.fillStyle = '#ff0000';
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
+  }
+
+  // Spinning crosshair for TAP weapon aiming
+  if(aimActive && getWeapon().type === 'TAP' && player) {
+    const cx = aimPos.x, cy = aimPos.y;
+    const rot = Date.now() * 0.003;
+    const armLen = 18;
+    ctx.save();
+    ctx.strokeStyle = '#00ffff';
+    ctx.lineWidth = 3;
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = '#00ffff';
+    // 4 rotating arms (+ shape)
+    for(let i = 0; i < 4; i++) {
+      const a = rot + i * Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a)*6, cy + Math.sin(a)*6);
+      ctx.lineTo(cx + Math.cos(a)*armLen, cy + Math.sin(a)*armLen);
+      ctx.stroke();
+    }
+    // Outer ring
+    ctx.beginPath();
+    ctx.arc(cx, cy, armLen + 4, 0, Math.PI*2);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.restore();
+
+    // Targeting line from player to aim direction
+    const px = player.x * SCALE + ox;
+    const pz = player.z * SCALE + oy;
+    const adx = cx - px, ady = cy - pz;
+    const adist = Math.sqrt(adx*adx+ady*ady);
+    if(adist > 10) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(0,255,255,0.25)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([6,6]);
+      ctx.beginPath();
+      ctx.moveTo(px, pz);
+      ctx.lineTo(cx, cy);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 }
 
