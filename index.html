@@ -17,7 +17,8 @@ canvas{display:block;width:100%;height:100%}
 #tokens{float:right;color:#ff0;font-size:20px;text-shadow:0 0 10px #ff0}
 .screen{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.92);color:#fff;pointer-events:auto;z-index:100}
 .screen.hidden{display:none}
-#title-screen h1{font-size:48px;color:#0ff;text-shadow:0 0 30px #0ff,0 0 60px #08f;margin-bottom:20px;letter-spacing:8px}
+#title-screen h1{font-size:64px;color:#0ff;text-shadow:0 0 30px #0ff,0 0 60px #08f;margin-bottom:10px;letter-spacing:8px}
+#title-screen .subtitle{color:#888;font-size:16px;margin-bottom:15px}
 .backstory{max-width:600px;text-align:center;color:#888;font-size:14px;line-height:1.6;margin:10px 20px}
 .btn{background:none;border:2px solid #0ff;color:#0ff;padding:15px 40px;font-size:20px;font-family:'Courier New',monospace;cursor:pointer;pointer-events:auto;margin:10px;text-shadow:0 0 10px #0ff;box-shadow:0 0 15px rgba(0,255,255,0.3);transition:all 0.2s}
 .btn:active{background:#0ff;color:#000}
@@ -70,6 +71,7 @@ canvas{display:block;width:100%;height:100%}
 
   <div id="title-screen" class="screen">
     <h1>LASER GATE</h1>
+    <div class="subtitle">Made for Edmund 🦖</div>
     <div class="backstory">"In the year 2157, the Neon City has been taken over by rogue laser bots called NBCs (Neural Battle Constructs). As the city's last Laser Knight, you must fight through 100 levels of their fortress, collect tokens, and defeat the Supreme NBC Core to free Neon City forever."</div>
     <div class="best-level" id="best-display"></div>
     <button class="btn" id="play-btn">TAP TO PLAY</button>
@@ -131,6 +133,7 @@ let camX = 0, camY = 0;
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
 function playSound(freq, dur, type='square', vol=0.1) {
+  if(audioCtx.state === 'suspended') audioCtx.resume();
   const o = audioCtx.createOscillator();
   const g = audioCtx.createGain();
   o.type = type;
@@ -141,17 +144,100 @@ function playSound(freq, dur, type='square', vol=0.1) {
   g.connect(audioCtx.destination);
   o.start();
   o.stop(audioCtx.currentTime + dur);
+  return o;
+}
+function playSoundRamp(startFreq, endFreq, dur, type='sine', vol=0.1) {
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.type = type;
+  o.frequency.value = startFreq;
+  o.frequency.linearRampToValueAtTime(endFreq, audioCtx.currentTime + dur);
+  g.gain.value = vol;
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+  o.connect(g);
+  g.connect(audioCtx.destination);
+  o.start();
+  o.stop(audioCtx.currentTime + dur);
 }
 function sfxShoot(color) {
-  const freqs = {blue:800,green:600,yellow:1000,purple:400,hotpink:1200,white:1500};
-  playSound(freqs[color]||800, 0.1, 'square', 0.08);
+  // Player laser: short high beep (880hz, 0.05s, sawtooth)
+  playSound(880, 0.05, 'sawtooth', 0.08);
 }
-function sfxHit() { playSound(200, 0.15, 'sawtooth', 0.1); }
-function sfxExplosion() { playSound(80, 0.3, 'sawtooth', 0.12); }
-function sfxPickup() { playSound(1200, 0.1); playSound(1600, 0.1); }
-function sfxGateOpen() { playSound(400, 0.2); playSound(600, 0.2); playSound(800, 0.3); }
+function sfxNBCShoot() {
+  // NBC laser: medium blip (440hz, 0.08s, square)
+  playSound(440, 0.08, 'square', 0.05);
+}
+function sfxHit() {
+  // NBC hit: mid thud with quick frequency drop
+  playSoundRamp(200, 80, 0.05, 'square', 0.1);
+}
+function sfxExplosion() {
+  // NBC death: satisfying explosion (100hz→50hz, 0.3s, sawtooth)
+  playSoundRamp(100, 50, 0.3, 'sawtooth', 0.12);
+  // Add noise burst
+  if(audioCtx.createBufferSource) {
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.15, audioCtx.sampleRate);
+    const data = buf.getChannelData(0);
+    for(let i = 0; i < data.length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i/data.length);
+    const src = audioCtx.createBufferSource();
+    const g = audioCtx.createGain();
+    src.buffer = buf;
+    g.gain.value = 0.08;
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+    src.connect(g); g.connect(audioCtx.destination);
+    src.start(); src.stop(audioCtx.currentTime + 0.15);
+  }
+}
+function sfxPickup() {
+  // Key pickup: happy jingle (C, E, G)
+  const t = audioCtx.currentTime;
+  [520,660,780].forEach((f,i) => {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.value = 0.1;
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.15*(i+1) + 0.1);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t + 0.12*i); o.stop(t + 0.12*i + 0.15);
+  });
+}
+function sfxGateOpen() {
+  // Deep whoosh (200→400hz, 0.5s, sine)
+  playSoundRamp(200, 400, 0.5, 'sine', 0.12);
+}
 function sfxPlayerHit() { playSound(150, 0.2, 'sawtooth', 0.15); }
-function sfxShieldPickup() { playSound(400,0.15,'sine',0.1); playSound(600,0.15,'sine',0.1); playSound(900,0.2,'sine',0.12); playSound(1200,0.25,'sine',0.1); }
+function sfxShieldPickup() {
+  // Rising chime (400→800hz, 0.4s, sine)
+  playSoundRamp(400, 800, 0.4, 'sine', 0.12);
+}
+function sfxLevelComplete() {
+  // Triumphant fanfare: 4 ascending notes
+  const t = audioCtx.currentTime;
+  [523, 659, 784, 1047].forEach((f,i) => {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine'; o.frequency.value = f;
+    g.gain.value = 0.12;
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.2*(i+1) + 0.15);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t + 0.18*i); o.stop(t + 0.18*i + 0.25);
+  });
+}
+function sfxGameOver() {
+  // Descending sad tones
+  const t = audioCtx.currentTime;
+  [440, 370, 311, 220].forEach((f,i) => {
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sawtooth'; o.frequency.value = f;
+    g.gain.value = 0.1;
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.3*(i+1) + 0.2);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(t + 0.25*i); o.stop(t + 0.25*i + 0.35);
+  });
+}
+function sfxWallSpark() { playSound(1200, 0.02, 'square', 0.03); }
 
 // ===== SAVE STATE =====
 const DEFAULT_SAVE = {tokens:0,currentLevel:1,equippedGun:'pistol',equippedSkin:'blue',ownedGuns:['pistol'],ownedSkins:['blue'],bestLevel:1};
@@ -197,14 +283,7 @@ const STORY = {
   50:"HALFWAY. You've reached the NBC Command Center. They know you're here. No turning back now.",
   75:"The NBCs are calling for reinforcements. Their fortress is crumbling. Victory is within reach!",
   90:"WARNING ⚠️ The NBCs have deployed their ELITE units. Mini-bosses ahead! Levels 90-99 will test your skills. Stay sharp, Laser Knight.",
-  91:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
-  92:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
-  93:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
-  94:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
-  95:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
-  96:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
-  97:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
-  98:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
+  91:"⚠️ ELITE NBC DETECTED!",
   99:"You've made it to level 99. The Supreme NBC Core is one level away. The fate of Neon City rests in your hands. One. More. Level."
 };
 const LEVEL_NAMES = [
@@ -640,6 +719,7 @@ function startLevel() {
 
 function levelComplete() {
   gameState = 'levelcomplete';
+  sfxLevelComplete();
   document.getElementById('hud').style.display = 'none';
   document.getElementById('joystick-base').style.display = 'none';
   document.getElementById('aim-indicator').style.display = 'none';
@@ -698,6 +778,7 @@ function triggerDeath() {
 
 function gameOver() {
   gameState = 'gameover';
+  sfxGameOver();
   document.getElementById('hud').style.display = 'none';
   document.getElementById('joystick-base').style.display = 'none';
   document.getElementById('aim-indicator').style.display = 'none';
@@ -828,7 +909,7 @@ function showTokenFloat(wx, wz, amount) {
   const sy = (wz - camY) * SCALE + canvas.height/2 - 30;
   const div = document.createElement('div');
   div.className = 'token-float';
-  div.textContent = '+' + amount + ' tokens';
+  div.textContent = '+' + amount + ' 🪙';
   div.style.left = sx + 'px';
   div.style.top = sy + 'px';
   document.getElementById('damage-nums').appendChild(div);
@@ -1078,6 +1159,7 @@ function update(dt) {
       if(now - nbc.lastShot > nbc.shootInterval && dist < 15) {
         nbc.lastShot = now;
         nbc.shootPause = 0.3;
+        sfxNBCShoot();
         fireLaser(nbc.x, nbc.z, dx/dist, dz/dist, 1, '#ff2200', false);
       }
     }
@@ -1108,6 +1190,13 @@ function update(dt) {
     const travelDx = l.x - l.startX, travelDz = l.z - l.startZ;
     const travelDist = Math.sqrt(travelDx*travelDx + travelDz*travelDz);
     if(checkWallCollision(l.x, l.z, 0.1) || l.life <= 0 || travelDist > 15) {
+      if(checkWallCollision(l.x, l.z, 0.1)) {
+        sfxWallSpark();
+        for(let sp=0;sp<4;sp++){
+          const a=Math.random()*Math.PI*2, spd=3+Math.random()*3;
+          particles.push({x:l.x,z:l.z,dx:Math.cos(a)*spd,dz:Math.sin(a)*spd,life:0.3,color:'#ffaa44'});
+        }
+      }
       lasers.splice(i, 1);
       continue;
     }
@@ -1310,7 +1399,32 @@ function render() {
   ctx.fillStyle = '#1a1a2e';
   ctx.fillRect(0, 0, W, H);
 
-  if(gameState !== 'playing' || !player) return;
+  if(gameState !== 'playing' || !player) {
+    // Animated neon grid background for title/gameover/victory
+    const t = Date.now() * 0.001;
+    const gridSpacing = 60;
+    const scrollY = (t * 30) % gridSpacing;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0,255,255,0.12)';
+    ctx.lineWidth = 1;
+    for(let gx = 0; gx < W; gx += gridSpacing) {
+      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, H); ctx.stroke();
+    }
+    for(let gy = -gridSpacing + scrollY; gy < H + gridSpacing; gy += gridSpacing) {
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(W, gy); ctx.stroke();
+    }
+    for(let i = 0; i < 5; i++) {
+      const cx = W * (0.15 + i * 0.18);
+      const cy = H * (0.3 + 0.15 * Math.sin(t + i));
+      const r = 30 + 20 * Math.sin(t * 1.5 + i * 2);
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0,255,255,' + (0.06 + 0.04 * Math.sin(t + i)) + ')';
+      ctx.stroke();
+    }
+    ctx.restore();
+    return;
+  }
 
   ctx.save();
 
