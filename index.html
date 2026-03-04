@@ -103,7 +103,7 @@ canvas{display:block;width:100%;height:100%}
 
   <div id="victory-screen" class="screen hidden">
     <h1 style="color:#ff0;font-size:36px;text-shadow:0 0 30px #ff0">🏆 VICTORY! 🏆</h1>
-    <div style="color:#0ff;font-size:18px;margin:15px;max-width:500px;text-align:center;line-height:1.6">You did it, Laser Knight! Neon City is FREE!<br><br>Edmund — you are a LEGEND. 🏆</div>
+    <div style="color:#0ff;font-size:18px;margin:15px;max-width:500px;text-align:center;line-height:1.6">You did it, Laser Knight! Neon City is FREE!<br><br>EDMUND YOU ARE A LEGEND! 🏆<br><br>The Supreme NBC Core has been destroyed. Every citizen of Neon City will remember your name forever.</div>
     <button class="btn" id="victory-btn">PLAY AGAIN</button>
   </div>
 </div>
@@ -192,12 +192,20 @@ function getSkin() { return SKINS.find(s=>s.id===save.equippedSkin)||SKINS[0]; }
 
 // ===== STORY BEATS =====
 const STORY = {
-  10:"You've breached the outer walls. The NBCs are getting nervous.",
-  25:"Quarter of the way there. Neon City citizens are watching from the shadows.",
-  50:"HALFWAY. You've reached the NBC Command Center. They know you're here.",
-  75:"The NBCs are calling for reinforcements. Their fortress is crumbling.",
-  90:"WARNING: Mini-Boss protocols activated. Elite NBC units deployed!",
-  99:"One more. The Supreme NBC Core awaits."
+  10:"You've breached the outer walls. The NBCs are getting nervous. Keep pushing forward, Laser Knight!",
+  25:"Quarter of the way there. Neon City citizens are watching from the shadows. They believe in you.",
+  50:"HALFWAY. You've reached the NBC Command Center. They know you're here. No turning back now.",
+  75:"The NBCs are calling for reinforcements. Their fortress is crumbling. Victory is within reach!",
+  90:"WARNING ⚠️ The NBCs have deployed their ELITE units. Mini-bosses ahead! Levels 90-99 will test your skills. Stay sharp, Laser Knight.",
+  91:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
+  92:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
+  93:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
+  94:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
+  95:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
+  96:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
+  97:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
+  98:"⚠️ ELITE NBC DETECTED — Levels 90-99 have powerful mini-bosses!",
+  99:"You've made it to level 99. The Supreme NBC Core is one level away. The fate of Neon City rests in your hands. One. More. Level."
 };
 const LEVEL_NAMES = [
 '', // 0 (unused)
@@ -259,6 +267,10 @@ let gateOpen = false;
 let shieldPickups = [];
 let shieldActive = 0;
 let shieldDownFlash = 0;
+let eliteDeathFlash = 0;
+let bossDeathFlash = 0;
+let healthRestoredMsg = 0;
+let prevHealthBeforeLevel = 5;
 let roomW = 20, roomH = 20;
 
 // Touch
@@ -288,12 +300,12 @@ function createNBC(x, z, elite, boss) {
   elite = elite || false;
   boss = boss || false;
   // NBC health scales: level 1=2, level 50=5-6, level 89=8
-  const baseHp = boss ? 60 : (elite ? 15 : Math.min(2 + Math.floor(currentLevel * 0.07), 8));
-  const speed = boss ? 2.5 : (elite ? 3.5 : 1.8 + currentLevel * 0.035);
-  // Shoot interval: early(1-10)=3s, mid(11-50)=2s, late(51-89)=1.5s, mini-boss=1s
+  const baseHp = boss ? 50 : (elite ? 15 : Math.min(2 + Math.floor(currentLevel * 0.07), 8));
+  const speed = boss ? 2.5 : (elite ? 4.0 : 1.8 + currentLevel * 0.035);
+  // Shoot interval: early(1-10)=3s, mid(11-50)=2s, late(51-89)=1.5s, mini-boss=800ms
   let shootInterval;
   if(boss) { shootInterval = 800; }
-  else if(elite) { shootInterval = 1000; }
+  else if(elite) { shootInterval = 800; }
   else if(currentLevel <= 10) { shootInterval = 3000; }
   else if(currentLevel <= 50) { shootInterval = 2000; }
   else { shootInterval = 1500; }
@@ -302,7 +314,7 @@ function createNBC(x, z, elite, boss) {
     hp: baseHp, maxHp: baseHp, speed: speed,
     lastShot: 0, shootInterval: shootInterval,
     elite: elite, boss: boss, flashTime: 0,
-    bossPhase: 0, bossPhaseTimer: 0, chargeDir: null, spawnedShields: false,
+    bossPhase: 0, bossPhaseTimer: 0, bossChargeTimer: 0, chargeDir: null, spawnedShields: false,
     wobbleAngle: 0, wobbleTimer: 0, shootPause: 0
   };
 }
@@ -320,8 +332,8 @@ function clearLevel() {
 function generateLevel(levelNum) {
   clearLevel();
 
-  roomW = 18 + Math.min(levelNum * 0.2, 10);
-  roomH = 18 + Math.min(levelNum * 0.2, 10);
+  if(levelNum === 100) { roomW = 30; roomH = 30; }
+  else { roomW = 18 + Math.min(levelNum * 0.2, 10); roomH = 18 + Math.min(levelNum * 0.2, 10); }
 
   // Perimeter walls
   function addWall(cx, cz, w, h) {
@@ -333,9 +345,9 @@ function generateLevel(levelNum) {
   addWall(-0.25, roomH/2, 0.5, roomH+0.5);
   addWall(roomW+0.25, roomH/2, 0.5, roomH+0.5);
 
-  // Interior walls
+  // Interior walls (none for boss arena level 100)
   const rng = mulberry32(levelNum * 13337);
-  const numWalls = Math.min(3 + Math.floor(levelNum/4), 20);
+  const numWalls = levelNum === 100 ? 0 : Math.min(3 + Math.floor(levelNum/4), 20);
   for(let i=0;i<numWalls;i++){
     const ww = 1 + rng()*3;
     const wh = 1 + rng()*3;
@@ -378,6 +390,7 @@ function generateLevel(levelNum) {
 
   // Player
   createPlayer();
+  if(playerHealth < 5) healthRestoredMsg = 2.0;
   playerHealth = 5;
   playerInvincible = 0;
 
@@ -385,8 +398,9 @@ function generateLevel(levelNum) {
   if(levelNum === 100) {
     nbcs.push(createNBC(roomW/2, roomH/2, false, true));
   } else {
-    // Level 1: 2 NBCs, Level 10: ~4, scales smoothly up to 15
-    const nbcCount = Math.min(Math.floor(2 + (levelNum - 1) * 0.3), 15);
+    // Mini-boss levels 90-99: 2-3 regular + 1 elite; otherwise scale normally
+    const isMB = levelNum >= 90 && levelNum <= 99;
+    const nbcCount = isMB ? (2 + Math.floor(rng() * 2)) : Math.min(Math.floor(2 + (levelNum - 1) * 0.3), 15);
     for(let i=0;i<nbcCount;i++){
       let nx, nz;
       for(let attempt = 0; attempt < 20; attempt++) {
@@ -396,7 +410,7 @@ function generateLevel(levelNum) {
       }
       nbcs.push(createNBC(nx, nz));
     }
-    if(levelNum >= 90 && levelNum <= 99) {
+    if(isMB) {
       nbcs.push(createNBC(roomW/2, roomH/2, true));
     }
   }
@@ -821,6 +835,14 @@ function showTokenFloat(wx, wz, amount) {
   setTimeout(()=>div.remove(), 1000);
 }
 
+function showMiniBossMsg() {
+  const div = document.createElement('div');
+  div.style.cssText = 'position:absolute;top:30%;left:50%;transform:translate(-50%,-50%);font-size:28px;color:#ffaa00;text-shadow:0 0 20px #ffaa00,0 0 40px #ff8800;text-align:center;pointer-events:none;z-index:150;animation:dmgFloat 2s ease-out forwards;font-family:"Courier New",monospace;font-weight:bold;white-space:nowrap';
+  div.textContent = 'MINI-BOSS DEFEATED! +25 tokens 🏆';
+  document.getElementById('damage-nums').appendChild(div);
+  setTimeout(()=>div.remove(), 2000);
+}
+
 function showKeyFound() {
   const el = document.getElementById('key-found-msg');
   el.style.display = 'block';
@@ -973,35 +995,71 @@ function update(dt) {
     if(nbc.shootPause > 0) nbc.shootPause -= dt;
 
     if(nbc.boss) {
-      nbc.bossPhaseTimer += dt;
-      if(nbc.bossPhaseTimer > 4) {
-        nbc.bossPhase = (nbc.bossPhase + 1) % 3;
-        nbc.bossPhaseTimer = 0;
-        nbc.chargeDir = null;
-        nbc.spawnedShields = false;
-      }
+      // Health-based phases
+      const oldPhase = nbc.bossPhase;
+      if(nbc.hp > 35) nbc.bossPhase = 0;
+      else if(nbc.hp > 14) nbc.bossPhase = 1;
+      else nbc.bossPhase = 2;
+      if(nbc.bossPhase !== oldPhase) { nbc.spawnedShields = false; nbc.chargeDir = null; nbc.bossChargeTimer = 0; }
 
       if(gracePeriod > 0) { /* boss waits */ }
       else if(nbc.bossPhase === 0) {
-        if(now - nbc.lastShot > 300) {
+        // Phase 1: 8-way rotating spread, slow movement
+        if(now - nbc.lastShot > 400) {
           nbc.lastShot = now;
           for(let a=0;a<8;a++){
             const ang = a * Math.PI/4 + now*0.001;
             fireLaser(nbc.x, nbc.z, Math.cos(ang), Math.sin(ang), 1, '#ff0000', false);
           }
         }
+        if(dist > 5) slideMove(nbc, dx/dist*1.5*dt, dz/dist*1.5*dt, 2.5);
       } else if(nbc.bossPhase === 1) {
+        // Phase 2: faster shots, spawn 3 shield-NBCs
         if(!nbc.spawnedShields) {
           nbc.spawnedShields = true;
           for(let s=0;s<3;s++){
             const ang = s*Math.PI*2/3;
-            nbcs.push(createNBC(nbc.x+Math.cos(ang)*3, nbc.z+Math.sin(ang)*3));
+            nbcs.push(createNBC(nbc.x+Math.cos(ang)*4, nbc.z+Math.sin(ang)*4));
           }
         }
-        if(dist > 3) slideMove(nbc, dx/dist*1*dt, dz/dist*1*dt, 1.5);
+        if(now - nbc.lastShot > 250) {
+          nbc.lastShot = now;
+          for(let a=0;a<8;a++){
+            const ang = a * Math.PI/4 + now*0.0015;
+            fireLaser(nbc.x, nbc.z, Math.cos(ang), Math.sin(ang), 1, '#ff4400', false);
+          }
+        }
+        if(dist > 4) slideMove(nbc, dx/dist*2.5*dt, dz/dist*2.5*dt, 2.5);
       } else {
-        if(!nbc.chargeDir) nbc.chargeDir = {x:dx/dist, z:dz/dist};
-        slideMove(nbc, nbc.chargeDir.x*8*dt, nbc.chargeDir.z*8*dt, 1.5);
+        // Phase 3: ENRAGED — 12-way spread, charges at player every 5s, spawns minions
+        if(!nbc.bossChargeTimer) nbc.bossChargeTimer = 0;
+        nbc.bossChargeTimer += dt;
+        if(!nbc.spawnedShields) {
+          nbc.spawnedShields = true;
+          for(let s=0;s<4;s++){
+            const ang = s*Math.PI*2/4 + Math.random();
+            nbcs.push(createNBC(nbc.x+Math.cos(ang)*5, nbc.z+Math.sin(ang)*5));
+          }
+        }
+        if(now - nbc.lastShot > 200) {
+          nbc.lastShot = now;
+          for(let a=0;a<12;a++){
+            const ang = a * Math.PI/6 + now*0.002;
+            fireLaser(nbc.x, nbc.z, Math.cos(ang), Math.sin(ang), 1, '#ffaa00', false);
+          }
+        }
+        // Charge at player every 5s
+        if(nbc.bossChargeTimer > 5) {
+          nbc.bossChargeTimer = 0;
+          nbc.chargeDir = {x:dx/dist, z:dz/dist};
+        }
+        if(nbc.chargeDir) {
+          slideMove(nbc, nbc.chargeDir.x*8*dt, nbc.chargeDir.z*8*dt, 2.5);
+          // Stop charging after 1s
+          if(nbc.bossChargeTimer > 1) nbc.chargeDir = null;
+        } else {
+          if(dist > 3) slideMove(nbc, dx/dist*3*dt, dz/dist*3*dt, 2.5);
+        }
       }
     } else if(gracePeriod > 0) {
       /* NBCs frozen during grace period */
@@ -1027,7 +1085,7 @@ function update(dt) {
     if(nbc.flashTime > 0) nbc.flashTime -= dt;
 
     // Collision with player
-    const hitDist = nbc.boss ? 2 : 0.8;
+    const hitDist = nbc.boss ? 3 : (nbc.elite ? 1.5 : 0.8);
     if(dist < hitDist && playerInvincible <= 0 && shieldActive <= 0) {
       playerHealth--;
       playerInvincible = 1.5;
@@ -1059,7 +1117,7 @@ function update(dt) {
         const nbc = nbcs[j];
         const ddx = l.x - nbc.x;
         const ddz = l.z - nbc.z;
-        const hitR = nbc.boss ? 1.5 : 0.5;
+        const hitR = nbc.boss ? 2.5 : (nbc.elite ? 1.2 : 0.5);
         if(ddx*ddx+ddz*ddz < hitR*hitR) {
           nbc.hp -= l.damage;
           nbc.flashTime = 0.1;
@@ -1070,9 +1128,28 @@ function update(dt) {
           if(nbc.hp <= 0) {
             sfxExplosion();
             spawnExplosionParticles(nbc.x, nbc.z);
-            spawnParticles(nbc.x, nbc.z, nbc.boss ? '#ff0000' : '#ff4400', 25);
-            damageFlash = 0.06;
             const reward = nbc.boss ? 500 : (nbc.elite ? 25 : 2);
+            if(nbc.boss) {
+              // Epic boss death: 100 particles, rainbow flash, victory
+              spawnParticles(nbc.x, nbc.z, '#ff0000', 30);
+              spawnParticles(nbc.x, nbc.z, '#ffaa00', 30);
+              spawnParticles(nbc.x, nbc.z, '#00ffff', 20);
+              spawnParticles(nbc.x, nbc.z, '#ff00ff', 20);
+              screenShake = 1.0;
+              damageFlash = 0.5;
+              // Rainbow flash handled in render
+              bossDeathFlash = 2.0;
+            } else if(nbc.elite) {
+              // Mini-boss death: 50 particles, gold flash, message
+              spawnParticles(nbc.x, nbc.z, '#ffaa00', 50);
+              screenShake = 0.6;
+              damageFlash = 0.3;
+              eliteDeathFlash = 1.5;
+              showMiniBossMsg();
+            } else {
+              spawnParticles(nbc.x, nbc.z, '#ff4400', 25);
+              damageFlash = 0.06;
+            }
             save.tokens += reward;
             tokens_earned_this_level += reward;
             saveSave();
@@ -1120,6 +1197,9 @@ function update(dt) {
 
   if(screenShake > 0) screenShake -= dt;
   if(damageFlash > 0) damageFlash -= dt;
+  if(eliteDeathFlash > 0) eliteDeathFlash -= dt;
+  if(bossDeathFlash > 0) bossDeathFlash -= dt;
+  if(healthRestoredMsg > 0) healthRestoredMsg -= dt;
 
   // Laser trails
   for(const l of lasers) {
@@ -1180,6 +1260,45 @@ function drawHexagon(cx, cy, radius, rot, color) {
   }
   ctx.closePath();
   ctx.fill();
+  ctx.restore();
+}
+
+function drawDirectionalArrow(W, H, targetX, targetZ, label, color) {
+  if(!player) return;
+  const dx = targetX - player.x;
+  const dz = targetZ - player.z;
+  const dist = Math.sqrt(dx*dx+dz*dz);
+  if(dist < 2) return; // close enough, no arrow needed
+  const angle = Math.atan2(dz, dx);
+  // Position arrow at edge of screen center area
+  const arrowDist = 80;
+  const cx = W/2 + Math.cos(angle)*arrowDist;
+  const cy = H/2 + Math.sin(angle)*arrowDist;
+  const pulse = 0.6 + 0.4*Math.sin(Date.now()*0.005);
+  ctx.save();
+  ctx.globalAlpha = pulse;
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  // Arrow triangle
+  ctx.fillStyle = color;
+  ctx.shadowBlur = 15;
+  ctx.shadowColor = color;
+  ctx.beginPath();
+  ctx.moveTo(20, 0);
+  ctx.lineTo(-8, -10);
+  ctx.lineTo(-8, 10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+  // Label below
+  ctx.save();
+  ctx.globalAlpha = pulse;
+  ctx.font = 'bold 16px "Courier New", monospace';
+  ctx.fillStyle = color;
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = color;
+  ctx.textAlign = 'center';
+  ctx.fillText(label, cx, cy + 30);
   ctx.restore();
 }
 
@@ -1339,16 +1458,20 @@ function render() {
 
   // NBCs
   for(const nbc of nbcs) {
-    const size = nbc.boss ? 1.5 : (nbc.elite ? 0.7 : 0.4);
+    const size = nbc.boss ? 2.5 : (nbc.elite ? 1.2 : 0.4);
     let color;
     if(nbc.flashTime > 0) {
       color = '#ffffff';
     } else if(nbc.boss) {
-      // Pulsing red
       const pulse = 0.7 + 0.3*Math.sin(Date.now()*0.005);
-      color = 'rgba(255,' + Math.floor(pulse*50) + ',0,1)';
+      if(nbc.hp <= 14) { // Phase 3: bright orange/white
+        const w = Math.floor(200 + pulse*55);
+        color = 'rgba(255,' + w + ',' + Math.floor(pulse*200) + ',1)';
+      } else {
+        color = 'rgba(255,' + Math.floor(pulse*50) + ',0,1)';
+      }
     } else if(nbc.elite) {
-      color = '#ff6600';
+      color = '#ffaa00';
     } else {
       color = '#ff3333';
     }
@@ -1551,6 +1674,51 @@ function render() {
     ctx.fillStyle = '#ff0000';
     ctx.fillRect(0, 0, W, H);
     ctx.restore();
+  }
+
+  // Elite death gold flash
+  if(eliteDeathFlash > 0) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(eliteDeathFlash * 0.4, 0.35);
+    ctx.fillStyle = '#ffaa00';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  // Boss death rainbow flash
+  if(bossDeathFlash > 0) {
+    const hue = (Date.now() * 0.5) % 360;
+    ctx.save();
+    ctx.globalAlpha = Math.min(bossDeathFlash * 0.3, 0.4);
+    ctx.fillStyle = 'hsl(' + hue + ',100%,50%)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  // Health restored message
+  if(healthRestoredMsg > 0) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(healthRestoredMsg, 1);
+    ctx.font = 'bold 24px "Courier New", monospace';
+    ctx.fillStyle = '#ff4444';
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#ff0000';
+    ctx.textAlign = 'center';
+    ctx.fillText('❤️ Health restored!', W/2, 80);
+    ctx.restore();
+  }
+
+  // Directional arrows (HUD) — key & gate guidance
+  if(player && gameState === 'playing') {
+    const allNBCsDead = nbcs.length === 0;
+    if(allNBCsDead && !hasKey && keyObj) {
+      // Arrow pointing to key
+      drawDirectionalArrow(W, H, keyObj.x, keyObj.z, '🗝️ Find the key!', '#ffdd00');
+    } else if(hasKey && !gateOpen) {
+      // waiting for gate (shouldn't happen if all dead + key)
+    } else if(gateOpen && gateObj) {
+      drawDirectionalArrow(W, H, gateObj.x, gateObj.z, '→ Go to the EXIT!', '#00ff00');
+    }
   }
 
   // Scanline overlay (retro neon feel)
