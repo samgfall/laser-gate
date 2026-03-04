@@ -429,6 +429,15 @@ function clearLevel() {
   shieldPickups = []; shieldActive = 0; shieldDownFlash = 0;
   laserTrails = []; damageFlash = 0;
   player = null;
+  // Reset joystick and aim state so they don't carry over between levels
+  joystickTouch = null;
+  joystickActive = false;
+  joystickDir.x = 0; joystickDir.y = 0;
+  joystickStart.x = 0; joystickStart.y = 0;
+  joystickCurrent.x = 0; joystickCurrent.y = 0;
+  aimTouch = null;
+  const jb = document.getElementById('joystick-base');
+  if(jb) jb.style.display = 'none';
 }
 
 function generateLevel(levelNum) {
