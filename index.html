@@ -636,6 +636,17 @@ function levelComplete() {
   document.getElementById('levelcomplete-screen').classList.remove('hidden');
 }
 
+function triggerDeath() {
+  deathFreezeTimer = 0.3;
+  screenShake = 0.5;
+  const flash = document.getElementById('death-flash');
+  flash.style.display = 'block';
+  setTimeout(() => {
+    flash.style.display = 'none';
+    gameOver();
+  }, 300);
+}
+
 function gameOver() {
   gameState = 'gameover';
   document.getElementById('hud').style.display = 'none';
@@ -647,8 +658,8 @@ function gameOver() {
 
 // ===== TOUCH CONTROLS =====
 function handleTouchStart(e) {
-  if(gameState !== 'playing') return;
   e.preventDefault();
+  if(gameState !== 'playing') return;
   for(const t of e.changedTouches) {
     const hw = window.innerWidth / 2;
     if(t.clientX < hw && joystickTouch === null) {
@@ -666,16 +677,16 @@ function handleTouchStart(e) {
       aimTouch = t.identifier;
       aimStart.x = t.clientX;
       aimStart.y = t.clientY;
-      aimPos.x = t.clientX;
-      aimPos.y = t.clientY;
+      aimCurrent.x = t.clientX;
+      aimCurrent.y = t.clientY;
       aimActive = true;
     }
   }
 }
 
 function handleTouchMove(e) {
-  if(gameState !== 'playing') return;
   e.preventDefault();
+  if(gameState !== 'playing') return;
   for(const t of e.changedTouches) {
     if(t.identifier === joystickTouch) {
       const dx = t.clientX - joystickStart.x;
@@ -699,8 +710,8 @@ function handleTouchMove(e) {
       stick.style.top = (30 + vizY * 0.6) + 'px';
     }
     if(t.identifier === aimTouch) {
-      aimPos.x = t.clientX;
-      aimPos.y = t.clientY;
+      aimCurrent.x = t.clientX;
+      aimCurrent.y = t.clientY;
       const dx = t.clientX - aimStart.x;
       const dy = t.clientY - aimStart.y;
       const dist = Math.sqrt(dx*dx+dy*dy);
@@ -919,6 +930,14 @@ function update(dt) {
     const dz = player.z - nbc.z;
     const dist = Math.sqrt(dx*dx+dz*dz);
 
+    // Wobble timer for organic movement
+    nbc.wobbleTimer -= dt;
+    if(nbc.wobbleTimer <= 0) {
+      nbc.wobbleAngle = (Math.random() - 0.5) * (30 * Math.PI / 180);
+      nbc.wobbleTimer = 0.8 + Math.random() * 0.4;
+    }
+    if(nbc.shootPause > 0) nbc.shootPause -= dt;
+
     if(nbc.boss) {
       nbc.bossPhaseTimer += dt;
       if(nbc.bossPhaseTimer > 4) {
@@ -928,7 +947,8 @@ function update(dt) {
         nbc.spawnedShields = false;
       }
 
-      if(nbc.bossPhase === 0) {
+      if(gracePeriod > 0) { /* boss waits */ }
+      else if(nbc.bossPhase === 0) {
         if(now - nbc.lastShot > 300) {
           nbc.lastShot = now;
           for(let a=0;a<8;a++){
@@ -949,19 +969,23 @@ function update(dt) {
         if(!nbc.chargeDir) nbc.chargeDir = {x:dx/dist, z:dz/dist};
         slideMove(nbc, nbc.chargeDir.x*8*dt, nbc.chargeDir.z*8*dt, 1.5);
       }
+    } else if(gracePeriod > 0) {
+      /* NBCs frozen during grace period */
     } else {
-      if(dist > 1.5) {
+      if(dist > 1.5 && nbc.shootPause <= 0) {
         const spd = nbc.speed * dt;
+        const baseAngle = Math.atan2(dz, dx);
+        const wobbledAngle = baseAngle + nbc.wobbleAngle;
         const oldX = nbc.x, oldZ = nbc.z;
-        slideMove(nbc, dx/dist*spd, dz/dist*spd);
-        // Wall-avoidance: if stuck, deflect angle
+        slideMove(nbc, Math.cos(wobbledAngle)*spd, Math.sin(wobbledAngle)*spd);
         if(Math.abs(nbc.x - oldX) < 0.001 && Math.abs(nbc.z - oldZ) < 0.001) {
           const deflect = ((i % 2) === 0) ? 1 : -1;
-          slideMove(nbc, -dz/dist*spd*deflect, dx/dist*spd*deflect);
+          slideMove(nbc, -Math.sin(wobbledAngle)*spd*deflect, Math.cos(wobbledAngle)*spd*deflect);
         }
       }
       if(now - nbc.lastShot > nbc.shootInterval && dist < 15) {
         nbc.lastShot = now;
+        nbc.shootPause = 0.3;
         fireLaser(nbc.x, nbc.z, dx/dist, dz/dist, 1, '#ff2200', false);
       }
     }
@@ -973,11 +997,11 @@ function update(dt) {
     if(dist < hitDist && playerInvincible <= 0 && shieldActive <= 0) {
       playerHealth--;
       playerInvincible = 1.5;
-      screenShake = 0.4;
-      damageFlash = 0.15;
+      screenShake = 0.5;
+      damageFlash = 0.2;
       sfxPlayerHit();
       updateHUD();
-      if(playerHealth <= 0) { gameOver(); return; }
+      if(playerHealth <= 0) { triggerDeath(); return; }
     }
   }
 
@@ -988,7 +1012,10 @@ function update(dt) {
     l.z += l.dz * dt;
     l.life -= dt;
 
-    if(checkWallCollision(l.x, l.z, 0.1) || l.life <= 0) {
+    // Range cap: 15 world units
+    const travelDx = l.x - l.startX, travelDz = l.z - l.startZ;
+    const travelDist = Math.sqrt(travelDx*travelDx + travelDz*travelDz);
+    if(checkWallCollision(l.x, l.z, 0.1) || l.life <= 0 || travelDist > 15) {
       lasers.splice(i, 1);
       continue;
     }
@@ -1008,14 +1035,15 @@ function update(dt) {
 
           if(nbc.hp <= 0) {
             sfxExplosion();
+            spawnExplosionParticles(nbc.x, nbc.z);
             spawnParticles(nbc.x, nbc.z, nbc.boss ? '#ff0000' : '#ff4400', 25);
-            spawnParticles(nbc.x, nbc.z, '#ffff00', 8);
             damageFlash = 0.06;
             const reward = nbc.boss ? 500 : (nbc.elite ? 25 : 2);
             save.tokens += reward;
             tokens_earned_this_level += reward;
             saveSave();
             updateHUD();
+            showTokenFloat(nbc.x, nbc.z, reward);
             nbcs.splice(j, 1);
             checkGateOpen();
           }
@@ -1028,12 +1056,12 @@ function update(dt) {
       if(ddx*ddx+ddz*ddz < 0.4 && playerInvincible <= 0 && shieldActive <= 0) {
         playerHealth--;
         playerInvincible = 1.5;
-        screenShake = 0.4;
-        damageFlash = 0.15;
+        screenShake = 0.5;
+        damageFlash = 0.2;
         sfxPlayerHit();
         updateHUD();
         lasers.splice(i, 1);
-        if(playerHealth <= 0) { gameOver(); return; }
+        if(playerHealth <= 0) { triggerDeath(); return; }
       } else if(ddx*ddx+ddz*ddz < 0.4 && shieldActive > 0) {
         spawnParticles(l.x, l.z, '#00ffff', 3);
         lasers.splice(i, 1);
@@ -1350,7 +1378,8 @@ function render() {
     ctx.shadowBlur = 6;
     ctx.shadowColor = p.color;
     ctx.fillStyle = p.color;
-    ctx.fillRect(p.x*SCALE - 3, p.z*SCALE - 3, 6, 6);
+    const pSize = p.square ? 8 : 6;
+    ctx.fillRect(p.x*SCALE - pSize/2, p.z*SCALE - pSize/2, pSize, pSize);
     ctx.restore();
   }
 
@@ -1367,7 +1396,7 @@ function render() {
 
   // Spinning crosshair for TAP weapon aiming
   if(aimActive && getWeapon().type === 'TAP' && player) {
-    const cx = aimPos.x, cy = aimPos.y;
+    const cx = aimCurrent.x, cy = aimCurrent.y;
     const rot = Date.now() * 0.003;
     const armLen = 18;
     ctx.save();
