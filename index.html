@@ -157,10 +157,16 @@ function sfxShieldPickup() { playSound(400,0.15,'sine',0.1); playSound(600,0.15,
 const DEFAULT_SAVE = {tokens:0,currentLevel:1,equippedGun:'pistol',equippedSkin:'blue',ownedGuns:['pistol'],ownedSkins:['blue'],bestLevel:1};
 let save;
 function loadSave() {
-  try { save = JSON.parse(localStorage.getItem('lasergate_save')) || {...DEFAULT_SAVE}; }
-  catch(e) { save = {...DEFAULT_SAVE}; }
-  if(!save.ownedGuns) save.ownedGuns=['pistol'];
-  if(!save.ownedSkins) save.ownedSkins=['blue'];
+  try { save = JSON.parse(localStorage.getItem('lasergate_save')); }
+  catch(e) { save = null; }
+  if(!save) save = {tokens:0,currentLevel:1,equippedGun:'pistol',equippedSkin:'blue',ownedGuns:['pistol'],ownedSkins:['blue'],bestLevel:1};
+  if(!save.ownedGuns || !Array.isArray(save.ownedGuns)) save.ownedGuns=['pistol'];
+  if(!save.ownedSkins || !Array.isArray(save.ownedSkins)) save.ownedSkins=['blue'];
+  if(!save.equippedGun) save.equippedGun='pistol';
+  if(!save.equippedSkin) save.equippedSkin='blue';
+  if(!save.tokens) save.tokens=0;
+  if(!save.currentLevel) save.currentLevel=1;
+  if(!save.bestLevel) save.bestLevel=1;
 }
 function saveSave() { localStorage.setItem('lasergate_save', JSON.stringify(save)); }
 loadSave();
