@@ -100,8 +100,18 @@ canvas{display:block;width:100%;height:100%}
   <div id="gameover-screen" class="screen hidden">
     <h2 style="color:#f00;font-size:36px;text-shadow:0 0 20px #f00">GAME OVER</h2>
     <div id="go-level" style="color:#888;font-size:18px;margin:10px"></div>
-    <button class="btn" id="retry-btn">RETRY</button>
+    <button class="btn btn-big" id="retry-btn">RETRY LEVEL</button>
+    <button class="btn btn-skip" id="restart-btn">RESTART GAME</button>
   </div>
+  <div id="pause-overlay" class="screen hidden" style="z-index:250">
+    <h2 style="color:#0ff;font-size:36px;text-shadow:0 0 20px #0ff">⏸ PAUSED</h2>
+    <div style="color:#888;font-size:18px;margin:15px">Tap anywhere to resume</div>
+  </div>
+  <div id="tip-msg" style="position:absolute;bottom:15%;left:50%;transform:translateX(-50%);max-width:90%;text-align:center;color:#0ff;font-size:18px;text-shadow:0 0 10px #0ff;pointer-events:none;z-index:150;display:none;line-height:1.5">Tip: Move with your left thumb, aim and shoot with your right!<br>Find the KEY 🗝️ and reach the EXIT!</div>
+  <div id="combo-msg" style="position:absolute;top:35%;left:50%;transform:translate(-50%,-50%);font-size:48px;font-weight:bold;text-shadow:0 0 30px #ff8800,0 0 60px #ff4400;pointer-events:none;z-index:150;display:none;font-family:'Courier New',monospace"></div>
+  <div id="perfect-msg" style="position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);font-size:42px;color:#ffdd00;font-weight:bold;text-shadow:0 0 30px #ffdd00,0 0 60px #ff8800;pointer-events:none;z-index:150;display:none;font-family:'Courier New',monospace">PERFECT! ⭐</div>
+  <div id="shield-down-msg" style="position:absolute;top:30%;left:50%;transform:translate(-50%,-50%);font-size:36px;color:#ff4400;font-weight:bold;text-shadow:0 0 20px #ff4400;pointer-events:none;z-index:150;display:none;font-family:'Courier New',monospace">SHIELD DOWN ⚠️</div>
+  <button id="pause-btn" style="position:absolute;top:10px;right:10px;background:none;border:2px solid rgba(255,255,255,0.3);color:rgba(255,255,255,0.6);font-size:24px;width:44px;height:44px;border-radius:10px;pointer-events:auto;z-index:120;display:none;cursor:pointer">⏸</button>
 
   <div id="victory-screen" class="screen hidden">
     <h1 style="color:#ff0;font-size:36px;text-shadow:0 0 30px #ff0">🏆 VICTORY! 🏆</h1>
@@ -330,6 +340,11 @@ let damageFlash = 0;
 let laserTrails = [];
 let gracePeriod = 0;
 let deathFreezeTimer = 0;
+let paused = false;
+let damageTakenThisLevel = false;
+let comboCount = 0;
+let comboTimer = 0;
+let lastPurchaseTime = 0;
 
 // Level objects
 let player = null;
@@ -380,12 +395,20 @@ function createNBC(x, z, elite, boss) {
   boss = boss || false;
   // NBC health scales: level 1=2, level 50=5-6, level 89=8
   const baseHp = boss ? 50 : (elite ? 15 : Math.min(2 + Math.floor(currentLevel * 0.07), 8));
-  const speed = boss ? 2.5 : (elite ? 4.0 : 1.8 + currentLevel * 0.035);
-  // Shoot interval: early(1-10)=3s, mid(11-50)=2s, late(51-89)=1.5s, mini-boss=800ms
+  let speed;
+  if(boss) speed = 2.5;
+  else if(elite) speed = 4.0;
+  else if(currentLevel <= 3) speed = Math.min(1.0, 0.8 + currentLevel * 0.1);
+  else if(currentLevel <= 5) speed = 1.2 + currentLevel * 0.1;
+  else speed = 1.8 + currentLevel * 0.035;
+  // Shoot interval: lvl1=4.5s, lvl2-3=3.5s, lvl4-5=3s, mid=2s, late=1.5s
   let shootInterval;
   if(boss) { shootInterval = 800; }
   else if(elite) { shootInterval = 800; }
-  else if(currentLevel <= 10) { shootInterval = 3000; }
+  else if(currentLevel <= 1) { shootInterval = 4500; }
+  else if(currentLevel <= 3) { shootInterval = 3500; }
+  else if(currentLevel <= 5) { shootInterval = 3000; }
+  else if(currentLevel <= 10) { shootInterval = 2500; }
   else if(currentLevel <= 50) { shootInterval = 2000; }
   else { shootInterval = 1500; }
   return {
@@ -521,7 +544,21 @@ function generateLevel(levelNum) {
   levelStartTime = Date.now();
   tokens_earned_this_level = 0;
   gracePeriod = 1.5;
+  damageTakenThisLevel = false;
+  comboCount = 0;
+  comboTimer = 0;
   updateHUD();
+
+  // Handle 0 NBCs edge case
+  if(nbcs.length === 0) checkGateOpen();
+
+  // Show tip on first ever play
+  if(save.bestLevel <= 1 && levelNum === 1 && !localStorage.getItem('lasergate_tip_shown')) {
+    localStorage.setItem('lasergate_tip_shown', '1');
+    const tipEl = document.getElementById('tip-msg');
+    tipEl.style.display = 'block';
+    setTimeout(() => { tipEl.style.display = 'none'; }, 6000);
+  }
 }
 
 function mulberry32(a) {
@@ -692,7 +729,24 @@ document.getElementById('shop-next').onclick = () => {
 };
 document.getElementById('retry-btn').onclick = () => {
   document.getElementById('gameover-screen').classList.add('hidden');
+  startLevel(); // retries same level, tokens preserved
+};
+document.getElementById('restart-btn').onclick = () => {
+  document.getElementById('gameover-screen').classList.add('hidden');
+  currentLevel = 1;
+  save.currentLevel = 1;
+  saveSave();
   startLevel();
+};
+// Pause button
+document.getElementById('pause-btn').onclick = () => {
+  if(gameState !== 'playing') return;
+  paused = true;
+  document.getElementById('pause-overlay').classList.remove('hidden');
+};
+document.getElementById('pause-overlay').onclick = () => {
+  paused = false;
+  document.getElementById('pause-overlay').classList.add('hidden');
 };
 document.getElementById('victory-btn').onclick = () => {
   document.getElementById('victory-screen').classList.add('hidden');
@@ -706,7 +760,10 @@ document.getElementById('story-ok').onclick = () => {
 
 function startLevel() {
   gameState = 'playing';
+  paused = false;
+  document.getElementById('pause-overlay').classList.add('hidden');
   document.getElementById('hud').style.display = 'block';
+  document.getElementById('pause-btn').style.display = 'block';
   // Joystick and aim are drawn on canvas now
   document.getElementById('joystick-base').style.display = 'none';
   document.getElementById('aim-indicator').style.display = 'none';
@@ -721,6 +778,7 @@ function levelComplete() {
   gameState = 'levelcomplete';
   sfxLevelComplete();
   document.getElementById('hud').style.display = 'none';
+  document.getElementById('pause-btn').style.display = 'none';
   document.getElementById('joystick-base').style.display = 'none';
   document.getElementById('aim-indicator').style.display = 'none';
 
@@ -728,6 +786,16 @@ function levelComplete() {
   const speedBonus = Math.max(1, Math.min(10, Math.floor(30 / elapsed * 3)));
   tokens_earned_this_level += speedBonus;
   save.tokens += speedBonus;
+
+  // Perfect level bonus
+  if(!damageTakenThisLevel) {
+    const perfectBonus = 5;
+    tokens_earned_this_level += perfectBonus;
+    save.tokens += perfectBonus;
+    const perfectEl = document.getElementById('perfect-msg');
+    perfectEl.style.display = 'block';
+    setTimeout(() => { perfectEl.style.display = 'none'; }, 2500);
+  }
 
   if(currentLevel >= 100) {
     document.getElementById('victory-screen').classList.remove('hidden');
@@ -780,6 +848,7 @@ function gameOver() {
   gameState = 'gameover';
   sfxGameOver();
   document.getElementById('hud').style.display = 'none';
+  document.getElementById('pause-btn').style.display = 'none';
   document.getElementById('joystick-base').style.display = 'none';
   document.getElementById('aim-indicator').style.display = 'none';
   document.getElementById('go-level').textContent = 'Level ' + currentLevel;
@@ -788,8 +857,8 @@ function gameOver() {
 
 // ===== TOUCH CONTROLS =====
 function handleTouchStart(e) {
-  e.preventDefault();
   if(gameState !== 'playing') return;
+  e.preventDefault();
   for(const t of e.changedTouches) {
     const hw = window.innerWidth / 2;
     if(t.clientX < hw && joystickTouch === null) {
@@ -813,8 +882,8 @@ function handleTouchStart(e) {
 }
 
 function handleTouchMove(e) {
-  e.preventDefault();
   if(gameState !== 'playing') return;
+  e.preventDefault();
   for(const t of e.changedTouches) {
     if(t.identifier === joystickTouch) {
       const dx = t.clientX - joystickStart.x;
@@ -849,8 +918,8 @@ function handleTouchMove(e) {
 }
 
 function handleTouchEnd(e) {
-  e.preventDefault();
   if(gameState !== 'playing') return;
+  e.preventDefault();
   for(const t of e.changedTouches) {
     if(t.identifier === joystickTouch) {
       joystickTouch = null;
@@ -942,8 +1011,29 @@ function spawnExplosionParticles(x, z) {
   }
 }
 
+function sfxBuzzer() {
+  playSoundRamp(300, 100, 0.3, 'sawtooth', 0.12);
+  playSound(200, 0.15, 'square', 0.08);
+}
+
+function showCombo(count) {
+  const el = document.getElementById('combo-msg');
+  const emojis = ['', '', '🔥', '⚡', '💥', '☄️'];
+  const emoji = emojis[Math.min(count, 5)] || '☄️';
+  el.textContent = 'COMBO x' + count + '! ' + emoji;
+  el.style.color = count >= 4 ? '#ff00ff' : (count >= 3 ? '#00ffff' : '#ffaa00');
+  el.style.display = 'block';
+  setTimeout(() => { el.style.display = 'none'; }, 1500);
+}
+
 function update(dt) {
-  if(gameState !== 'playing' || !player) return;
+  if(gameState !== 'playing' || !player || paused) return;
+
+  // Combo timer
+  if(comboTimer > 0) {
+    comboTimer -= dt;
+    if(comboTimer <= 0) comboCount = 0;
+  }
 
   // Death freeze
   if(deathFreezeTimer > 0) {
@@ -1170,6 +1260,7 @@ function update(dt) {
     const hitDist = nbc.boss ? 3 : (nbc.elite ? 1.5 : 0.8);
     if(dist < hitDist && playerInvincible <= 0 && shieldActive <= 0) {
       playerHealth--;
+      damageTakenThisLevel = true;
       playerInvincible = 1.5;
       screenShake = 0.5;
       damageFlash = 0.2;
@@ -1255,6 +1346,7 @@ function update(dt) {
       const ddz = l.z - player.z;
       if(ddx*ddx+ddz*ddz < 0.4 && playerInvincible <= 0 && shieldActive <= 0) {
         playerHealth--;
+        damageTakenThisLevel = true;
         playerInvincible = 1.5;
         screenShake = 0.5;
         damageFlash = 0.2;
