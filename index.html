@@ -39,8 +39,12 @@ canvas{display:block;width:100%;height:100%}
 #story-popup .btn{margin-top:15px}
 #damage-nums{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:50}
 .dmg-num{position:absolute;color:#ff0;font-size:20px;font-weight:bold;text-shadow:0 0 5px #f80;animation:dmgFloat 0.8s ease-out forwards;pointer-events:none}
+.token-float{position:absolute;color:#0f0;font-size:18px;font-weight:bold;text-shadow:0 0 8px #0f0;animation:dmgFloat 1s ease-out forwards;pointer-events:none}
 @keyframes dmgFloat{0%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-40px)}}
 .best-level{color:#ff0;font-size:14px;margin:5px}
+#key-found-msg{position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);font-size:48px;color:#ffdd00;text-shadow:0 0 30px #ffdd00,0 0 60px #ff8800;pointer-events:none;z-index:150;display:none;animation:keyPulse 1.5s ease-out forwards}
+@keyframes keyPulse{0%{opacity:0;transform:translate(-50%,-50%) scale(0.5)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.2)}30%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(1)}}
+#death-flash{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(255,0,0,0.6);pointer-events:none;z-index:90;display:none}
 </style>
 </head>
 <body>
@@ -54,6 +58,8 @@ canvas{display:block;width:100%;height:100%}
   <div id="aim-indicator"></div>
   <div id="damage-nums"></div>
   <div id="story-popup"><div id="story-text"></div><button class="btn" id="story-ok">OK</button></div>
+  <div id="key-found-msg">KEY FOUND! 🗝️</div>
+  <div id="death-flash"></div>
 
   <div id="title-screen" class="screen">
     <h1>LASER GATE</h1>
@@ -197,6 +203,10 @@ let playerInvincible = 0;
 let tokens_earned_this_level = 0;
 let levelStartTime = 0;
 let screenShake = 0;
+let damageFlash = 0;
+let laserTrails = [];
+let gracePeriod = 0;
+let deathFreezeTimer = 0;
 
 // Level objects
 let player = null;
@@ -238,8 +248,8 @@ function createNBC(x, z, elite, boss) {
   elite = elite || false;
   boss = boss || false;
   const hp = boss ? 60 : (elite ? 15 : 3);
-  const speed = boss ? 2.5 : (elite ? 3 : 1.5 + currentLevel * 0.01);
-  const shootInterval = boss ? 800 : (elite ? 1000 : 2000 - Math.min(currentLevel * 5, 800));
+  const speed = boss ? 2.5 : (elite ? 3.5 : 1.8 + currentLevel * 0.035);
+  const shootInterval = boss ? 800 : (elite ? 800 : 2000 - Math.min(currentLevel * 15, 1400));
   return {
     x: x, z: z,
     hp: hp, maxHp: hp, speed: speed,
@@ -255,6 +265,7 @@ function clearLevel() {
   walls = []; neonLights = []; towers = [];
   keyObj = null; gateObj = null; hasKey = false; gateOpen = false;
   shieldPickups = []; shieldActive = 0; shieldDownFlash = 0;
+  laserTrails = []; damageFlash = 0;
   player = null;
 }
 
@@ -387,7 +398,7 @@ function slideMove(obj, dx, dz, radius) {
 
 // ===== LASERS =====
 function fireLaser(x, z, dx, dz, damage, color, fromPlayer) {
-  const speed = fromPlayer ? 20 : 10;
+  const speed = fromPlayer ? 28 : 16;
   const mag = Math.sqrt(dx*dx+dz*dz)||1;
   lasers.push({x:x, z:z, dx:dx/mag*speed, dz:dz/mag*speed, damage:damage, color:color, fromPlayer:fromPlayer, life:2});
   if(fromPlayer) sfxShoot(getWeapon().colorName);
@@ -814,7 +825,13 @@ function update(dt) {
     } else {
       if(dist > 1.5) {
         const spd = nbc.speed * dt;
+        const oldX = nbc.x, oldZ = nbc.z;
         slideMove(nbc, dx/dist*spd, dz/dist*spd);
+        // Wall-avoidance: if stuck, deflect angle
+        if(Math.abs(nbc.x - oldX) < 0.001 && Math.abs(nbc.z - oldZ) < 0.001) {
+          const deflect = ((i % 2) === 0) ? 1 : -1;
+          slideMove(nbc, -dz/dist*spd*deflect, dx/dist*spd*deflect);
+        }
       }
       if(now - nbc.lastShot > nbc.shootInterval && dist < 15) {
         nbc.lastShot = now;
@@ -828,8 +845,9 @@ function update(dt) {
     const hitDist = nbc.boss ? 2 : 0.8;
     if(dist < hitDist && playerInvincible <= 0 && shieldActive <= 0) {
       playerHealth--;
-      playerInvincible = 1;
-      screenShake = 0.3;
+      playerInvincible = 1.5;
+      screenShake = 0.4;
+      damageFlash = 0.15;
       sfxPlayerHit();
       updateHUD();
       if(playerHealth <= 0) { gameOver(); return; }
@@ -863,7 +881,9 @@ function update(dt) {
 
           if(nbc.hp <= 0) {
             sfxExplosion();
-            spawnParticles(nbc.x, nbc.z, nbc.boss ? '#ff0000' : '#ff4400');
+            spawnParticles(nbc.x, nbc.z, nbc.boss ? '#ff0000' : '#ff4400', 25);
+            spawnParticles(nbc.x, nbc.z, '#ffff00', 8);
+            damageFlash = 0.06;
             const reward = nbc.boss ? 500 : (nbc.elite ? 25 : 2);
             save.tokens += reward;
             tokens_earned_this_level += reward;
@@ -880,8 +900,9 @@ function update(dt) {
       const ddz = l.z - player.z;
       if(ddx*ddx+ddz*ddz < 0.4 && playerInvincible <= 0 && shieldActive <= 0) {
         playerHealth--;
-        playerInvincible = 1;
-        screenShake = 0.3;
+        playerInvincible = 1.5;
+        screenShake = 0.4;
+        damageFlash = 0.15;
         sfxPlayerHit();
         updateHUD();
         lasers.splice(i, 1);
@@ -909,6 +930,16 @@ function update(dt) {
   }
 
   if(screenShake > 0) screenShake -= dt;
+  if(damageFlash > 0) damageFlash -= dt;
+
+  // Laser trails
+  for(const l of lasers) {
+    laserTrails.push({x: l.x, z: l.z, color: l.color, life: 0.15});
+  }
+  for(let i = laserTrails.length-1; i >= 0; i--) {
+    laserTrails[i].life -= dt;
+    if(laserTrails[i].life <= 0) laserTrails.splice(i, 1);
+  }
 }
 
 function checkGateOpen() {
@@ -1152,6 +1183,18 @@ function render() {
     }
   }
 
+  // Laser trails
+  for(const t of laserTrails) {
+    const alpha = t.life / 0.15 * 0.3;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = t.color;
+    ctx.beginPath();
+    ctx.arc(t.x*SCALE, t.z*SCALE, 2, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   // Lasers
   for(const l of lasers) {
     const len = 0.4 * SCALE;
@@ -1185,6 +1228,15 @@ function render() {
   }
 
   ctx.restore();
+
+  // Damage flash overlay
+  if(damageFlash > 0) {
+    ctx.save();
+    ctx.globalAlpha = Math.min(damageFlash * 4, 0.4);
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
 }
 
 function animate(time) {
