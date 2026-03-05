@@ -345,38 +345,45 @@ function getSkin() { return SKINS.find(s=>s.id===save.equippedSkin)||SKINS[0]; }
 
 // ===== STORY BEATS =====
 const STORY = {
-  10:"You've breached the outer walls. The NBCs are getting nervous. Keep pushing forward, Laser Knight!",
+  10:"⚠️ BOSS FIGHT! The GATE KEEPER blocks your path. Defeat it to breach the outer walls!",
+  20:"⚠️ BOSS FIGHT! The CIRCUIT OVERLORD has been alerted. Take it down!",
   25:"Quarter of the way there. Neon City citizens are watching from the shadows. They believe in you.",
-  50:"HALFWAY. You've reached the NBC Command Center. They know you're here. No turning back now.",
+  30:"⚠️ BOSS FIGHT! The NEON PHANTOM materializes. It's fast and deadly!",
+  40:"⚠️ BOSS FIGHT! DATA WARDEN guards the inner sectors. Prepare yourself!",
+  50:"⚠️ BOSS FIGHT! HALFWAY THERE. The CORE SENTINEL awaits in the Command Center!",
+  60:"⚠️ BOSS FIGHT! The GRID TYRANT controls this sector. Fight with everything you have!",
+  70:"⚠️ BOSS FIGHT! The PLASMA WRAITH appears from the void. Stay sharp!",
   75:"The NBCs are calling for reinforcements. Their fortress is crumbling. Victory is within reach!",
-  90:"WARNING ⚠️ The NBCs have deployed their ELITE units. Mini-bosses ahead! Levels 90-99 will test your skills. Stay sharp, Laser Knight.",
-  91:"⚠️ ELITE NBC DETECTED!",
-  99:"You've made it to level 99. The Supreme NBC Core is one level away. The fate of Neon City rests in your hands. One. More. Level."
+  80:"⚠️ BOSS FIGHT! The QUANTUM BEAST warps reality itself. Don't let it overwhelm you!",
+  90:"⚠️ BOSS FIGHT! The VOID EMPEROR commands the elite sector. This is the hardest boss yet!",
+  91:"⚠️ ELITE NBC DETECTED! The elite sector begins.",
+  99:"You've made it to level 99. The Supreme NBC Core is one level away. One. More. Level.",
+  100:"⚠️ FINAL BOSS! The SUPREME NBC CORE. The fate of Neon City rests in your hands!"
 };
 const LEVEL_NAMES = [
 '', // 0 (unused)
 // 1-10: Tutorial / Intro
 'The Outpost','First Contact','Storage Bay','Neon Alley','Laser Grid',
-'Bot Factory','Circuit Room','Power Core','Data Stream','Outer Breach',
+'Bot Factory','Circuit Room','Power Core','Data Stream','⚔️ GATE KEEPER',
 // 11-30: Mid-game
 'Guard Post','Neon Tunnels','Cooling Duct','Signal Tower','Reactor Wing',
-'Grid Lock','Drone Bay','Security Hub','Access Tunnel','Deep Core',
+'Grid Lock','Drone Bay','Security Hub','Access Tunnel','⚔️ CIRCUIT OVERLORD',
 'Plasma Vent','Code Vault','Sync Chamber','Mech Bay','Quarter Mark',
-'Sensor Array','Comm Station','Gravity Well','Phase Gate','Shield Room',
+'Sensor Array','Comm Station','Gravity Well','Phase Gate','⚔️ NEON PHANTOM',
 // 31-60: Hard zone
 'The Maze','Photon Lab','Echo Chamber','Warp Node','Nano Forge',
-'Static Fields','Arc Chamber','Flux Core','Dark Matter','Quantum Maze',
+'Static Fields','Arc Chamber','Flux Core','Dark Matter','⚔️ DATA WARDEN',
 'Tesla Hall','Beam Splitter','Prism Walk','Void Space','Cryo Lab',
-'Fusion Ring','Anti-Matter','Core Access','Shadow Realm','COMMAND CENTER',
+'Fusion Ring','Anti-Matter','Core Access','Shadow Realm','⚔️ CORE SENTINEL',
 'Inner Sanctum','Override Bay','Hack Suite','Bypass Node','Firewall',
-'Zero Point','Null Space','Dead Zone','Ghost Lane','Phantom Core',
+'Zero Point','Null Space','Dead Zone','Ghost Lane','⚔️ GRID TYRANT',
 // 61-89: Elite zone
 'NBC Command','Synapse Walk','Mind Gate','Logic Bomb','High Voltage',
-'Byte Hall','Hex Maze','Stack Room','Buffer Zone','Overflow',
+'Byte Hall','Hex Maze','Stack Room','Buffer Zone','⚔️ PLASMA WRAITH',
 'Kernel Panic','Root Access','Admin Tower','Sudo Room','Core Dump',
-'Debug Hall','Trace Route','Ping Arena','Port Scan','Backdoor',
+'Debug Hall','Trace Route','Ping Arena','Port Scan','⚔️ QUANTUM BEAST',
 'Exploit Den','Payload Bay','Trojan Hall','Virus Core','Worm Tunnel',
-'Rootkit Room','Botnet Lair','DDoS Arena','ELITE SECTOR',
+'Rootkit Room','Botnet Lair','DDoS Arena','⚔️ VOID EMPEROR',
 // 90-99: Mini-boss arenas
 'Elite Arena I','Elite Arena II','Elite Arena III','Elite Arena IV','Elite Arena V',
 'Elite Arena VI','Elite Arena VII','Elite Arena VIII','Elite Arena IX','Elite Arena X',
@@ -459,20 +466,27 @@ function createPlayer() {
 }
 
 // ===== NBC =====
+function getBossTier() {
+  if(currentLevel % 10 === 0 && currentLevel <= 100) return currentLevel / 10;
+  return 0;
+}
+function isBossLevel(lvl) { return lvl % 10 === 0 && lvl <= 100; }
+const BOSS_NAMES = ['','GATE KEEPER','CIRCUIT OVERLORD','NEON PHANTOM','DATA WARDEN','CORE SENTINEL','GRID TYRANT','PLASMA WRAITH','QUANTUM BEAST','VOID EMPEROR','SUPREME NBC CORE'];
+
 function createNBC(x, z, elite, boss) {
   elite = elite || false;
   boss = boss || false;
-  // NBC health scales: level 1=2, level 50=5-6, level 89=8
-  const baseHp = boss ? 50 : (elite ? 15 : Math.min(2 + Math.floor(currentLevel * 0.07), 8));
+  const bossTier = boss ? getBossTier() : 0;
+  // Boss HP scales with tier: tier1=22, tier10=85
+  const baseHp = boss ? (15 + bossTier * 7) : (elite ? 15 : Math.min(2 + Math.floor(currentLevel * 0.07), 8));
   let speed;
-  if(boss) speed = 2.5;
+  if(boss) speed = 1.8 + bossTier * 0.15;
   else if(elite) speed = 4.0;
   else if(currentLevel <= 3) speed = Math.min(1.0, 0.8 + currentLevel * 0.1);
   else if(currentLevel <= 5) speed = 1.2 + currentLevel * 0.1;
   else speed = 1.8 + currentLevel * 0.035;
-  // Shoot interval: lvl1=4.5s, lvl2-3=3.5s, lvl4-5=3s, mid=2s, late=1.5s
   let shootInterval;
-  if(boss) { shootInterval = 800; }
+  if(boss) { shootInterval = Math.max(200, 900 - bossTier * 60); }
   else if(elite) { shootInterval = 800; }
   else if(currentLevel <= 1) { shootInterval = 4500; }
   else if(currentLevel <= 3) { shootInterval = 3500; }
@@ -484,7 +498,7 @@ function createNBC(x, z, elite, boss) {
     x: x, z: z,
     hp: baseHp, maxHp: baseHp, speed: speed,
     lastShot: 0, shootInterval: shootInterval,
-    elite: elite, boss: boss, flashTime: 0,
+    elite: elite, boss: boss, bossTier: bossTier, flashTime: 0,
     bossPhase: 0, bossPhaseTimer: 0, bossChargeTimer: 0, chargeDir: null, spawnedShields: false,
     wobbleAngle: 0, wobbleTimer: 0, shootPause: 0
   };
@@ -512,7 +526,8 @@ function clearLevel() {
 function generateLevel(levelNum) {
   clearLevel();
 
-  if(levelNum === 100) { roomW = 30; roomH = 30; }
+  const isBoss = isBossLevel(levelNum);
+  if(isBoss) { roomW = 24 + Math.floor(levelNum/20)*2; roomH = 24 + Math.floor(levelNum/20)*2; }
   else { roomW = 18 + Math.min(levelNum * 0.2, 10); roomH = 18 + Math.min(levelNum * 0.2, 10); }
 
   // Perimeter walls
@@ -525,9 +540,9 @@ function generateLevel(levelNum) {
   addWall(-0.25, roomH/2, 0.5, roomH+0.5);
   addWall(roomW+0.25, roomH/2, 0.5, roomH+0.5);
 
-  // Interior walls (none for boss arena level 100)
+  // Interior walls (none for boss arenas)
   const rng = mulberry32(levelNum * 13337);
-  const numWalls = levelNum === 100 ? 0 : Math.min(3 + Math.floor(levelNum/4), 20);
+  const numWalls = isBoss ? 0 : Math.min(3 + Math.floor(levelNum/4), 20);
   for(let i=0;i<numWalls;i++){
     const ww = 1 + rng()*3;
     const wh = 1 + rng()*3;
@@ -578,11 +593,22 @@ function generateLevel(levelNum) {
   playerInvincible = 0;
 
   // NBCs
-  if(levelNum === 100) {
+  if(isBoss) {
+    // Boss level: boss in center + some regular NBCs as adds (more at higher tiers)
     nbcs.push(createNBC(roomW/2, roomH/2, false, true));
+    const addCount = Math.min(Math.floor(getBossTier() * 0.8), 6);
+    for(let i=0;i<addCount;i++){
+      let nx, nz;
+      for(let attempt = 0; attempt < 20; attempt++) {
+        nx = 5 + rng()*(roomW-8);
+        nz = 5 + rng()*(roomH-8);
+        if(!checkWallCollision(nx, nz, 0.6)) break;
+      }
+      nbcs.push(createNBC(nx, nz));
+    }
   } else {
-    // Mini-boss levels 90-99: 2-3 regular + 1 elite; otherwise scale normally
-    const isMB = levelNum >= 90 && levelNum <= 99;
+    // Mini-boss levels 91-99: 2-3 regular + 1 elite; otherwise scale normally
+    const isMB = levelNum >= 91 && levelNum <= 99;
     const nbcCount = isMB ? (2 + Math.floor(rng() * 2)) : Math.min(Math.floor(2 + (levelNum - 1) * 0.3), 15);
     for(let i=0;i<nbcCount;i++){
       let nx, nz;
@@ -716,7 +742,7 @@ function playerShoot(dirX, dirZ) {
       if(nbc.hp <= 0) {
         sfxExplosion();
         spawnExplosionParticles(nbc.x, nbc.z);
-        const reward = nbc.boss ? 500 : (nbc.elite ? 25 : 2);
+        const reward = nbc.boss ? (30 + (nbc.bossTier||1) * 20) : (nbc.elite ? 25 : 2);
         if(nbc.boss) { spawnParticles(nbc.x, nbc.z, '#ff0000', 30); spawnParticles(nbc.x, nbc.z, '#ffaa00', 30); spawnParticles(nbc.x, nbc.z, '#00ffff', 20); spawnParticles(nbc.x, nbc.z, '#ff00ff', 20); screenShake = 1.0; damageFlash = 0.5; bossDeathFlash = 2.0; }
         else if(nbc.elite) { spawnParticles(nbc.x, nbc.z, '#ffaa00', 50); screenShake = 0.6; damageFlash = 0.3; eliteDeathFlash = 1.5; showMiniBossMsg(); }
         else { spawnParticles(nbc.x, nbc.z, '#ff4400', 25); damageFlash = 0.06; showKillMsg(nbc.x, nbc.z); }
@@ -1471,73 +1497,80 @@ function update(dt) {
     if(nbc.shootPause > 0) nbc.shootPause -= dt;
 
     if(nbc.boss) {
-      // Health-based phases
+      // Health-based phases (percentage-based for all tiers)
       const oldPhase = nbc.bossPhase;
-      if(nbc.hp > 35) nbc.bossPhase = 0;
-      else if(nbc.hp > 14) nbc.bossPhase = 1;
+      const hpPct = nbc.hp / nbc.maxHp;
+      if(hpPct > 0.6) nbc.bossPhase = 0;
+      else if(hpPct > 0.25) nbc.bossPhase = 1;
       else nbc.bossPhase = 2;
       if(nbc.bossPhase !== oldPhase) { nbc.spawnedShields = false; nbc.chargeDir = null; nbc.bossChargeTimer = 0; }
 
+      const tier = nbc.bossTier || 1;
+      const bulletCount = Math.min(6 + tier, 16);
+      const bossSize = Math.min(1.5 + tier * 0.1, 2.5);
+
       if(gracePeriod > 0) { /* boss waits */ }
       else if(nbc.bossPhase === 0) {
-        // Phase 1: 8-way rotating spread, slow movement
-        if(now - nbc.lastShot > 400) {
+        // Phase 1: rotating spread, slow movement
+        if(now - nbc.lastShot > nbc.shootInterval) {
           nbc.lastShot = now;
-          for(let a=0;a<8;a++){
-            const ang = a * Math.PI/4 + now*0.001;
+          for(let a=0;a<bulletCount;a++){
+            const ang = a * Math.PI*2/bulletCount + now*0.001;
             fireLaser(nbc.x, nbc.z, Math.cos(ang), Math.sin(ang), 1, '#ff0000', false);
           }
         }
-        if(dist > 5) slideMove(nbc, dx/dist*1.5*dt, dz/dist*1.5*dt, 2.5);
+        if(dist > 5) slideMove(nbc, dx/dist*1.5*dt, dz/dist*1.5*dt, bossSize);
       } else if(nbc.bossPhase === 1) {
-        // Phase 2: faster shots, spawn 3 shield-NBCs
+        // Phase 2: faster shots, spawn adds
         if(!nbc.spawnedShields) {
           nbc.spawnedShields = true;
-          for(let s=0;s<3;s++){
-            const ang = s*Math.PI*2/3;
+          const addCount = Math.min(2 + Math.floor(tier/3), 5);
+          for(let s=0;s<addCount;s++){
+            const ang = s*Math.PI*2/addCount;
             nbcs.push(createNBC(nbc.x+Math.cos(ang)*4, nbc.z+Math.sin(ang)*4));
           }
         }
-        if(now - nbc.lastShot > 250) {
+        if(now - nbc.lastShot > Math.max(150, nbc.shootInterval - 100)) {
           nbc.lastShot = now;
-          for(let a=0;a<8;a++){
-            const ang = a * Math.PI/4 + now*0.0015;
+          for(let a=0;a<bulletCount;a++){
+            const ang = a * Math.PI*2/bulletCount + now*0.0015;
             fireLaser(nbc.x, nbc.z, Math.cos(ang), Math.sin(ang), 1, '#ff4400', false);
           }
         }
-        if(dist > 4) slideMove(nbc, dx/dist*2.5*dt, dz/dist*2.5*dt, 2.5);
+        if(dist > 4) slideMove(nbc, dx/dist*2.5*dt, dz/dist*2.5*dt, bossSize);
       } else {
-        // Phase 3: ENRAGED — 12-way spread, charges at player every 5s, spawns minions
+        // Phase 3: ENRAGED — more bullets, charges, spawns minions
         if(!nbc.bossChargeTimer) nbc.bossChargeTimer = 0;
         nbc.bossChargeTimer += dt;
         if(!nbc.spawnedShields) {
           nbc.spawnedShields = true;
-          for(let s=0;s<4;s++){
-            const ang = s*Math.PI*2/4 + Math.random();
+          const addCount = Math.min(2 + Math.floor(tier/2), 6);
+          for(let s=0;s<addCount;s++){
+            const ang = s*Math.PI*2/addCount + Math.random();
             nbcs.push(createNBC(nbc.x+Math.cos(ang)*5, nbc.z+Math.sin(ang)*5));
           }
         }
-        if(now - nbc.lastShot > 200) {
+        const enragedBullets = Math.min(bulletCount + 4, 20);
+        if(now - nbc.lastShot > Math.max(100, nbc.shootInterval - 200)) {
           nbc.lastShot = now;
-          for(let a=0;a<12;a++){
-            const ang = a * Math.PI/6 + now*0.002;
+          for(let a=0;a<enragedBullets;a++){
+            const ang = a * Math.PI*2/enragedBullets + now*0.002;
             fireLaser(nbc.x, nbc.z, Math.cos(ang), Math.sin(ang), 1, '#ffaa00', false);
           }
         }
-        // Charge at player every 5s
-        if(nbc.bossChargeTimer > 5) {
+        // Charge at player every few seconds (faster at higher tiers)
+        const chargeInterval = Math.max(2, 5 - tier * 0.3);
+        if(nbc.bossChargeTimer > chargeInterval) {
           nbc.bossChargeTimer = 0;
           nbc.chargeDir = {x:dx/dist, z:dz/dist};
         }
         if(nbc.chargeDir) {
-          slideMove(nbc, nbc.chargeDir.x*8*dt, nbc.chargeDir.z*8*dt, 2.5);
-          // Clamp boss to room bounds
-          nbc.x = Math.max(2.5, Math.min(roomW - 2.5, nbc.x));
-          nbc.z = Math.max(2.5, Math.min(roomH - 2.5, nbc.z));
-          // Stop charging after 1s
+          slideMove(nbc, nbc.chargeDir.x*8*dt, nbc.chargeDir.z*8*dt, bossSize);
+          nbc.x = Math.max(bossSize, Math.min(roomW - bossSize, nbc.x));
+          nbc.z = Math.max(bossSize, Math.min(roomH - bossSize, nbc.z));
           if(nbc.bossChargeTimer > 1) nbc.chargeDir = null;
         } else {
-          if(dist > 3) slideMove(nbc, dx/dist*3*dt, dz/dist*3*dt, 2.5);
+          if(dist > 3) slideMove(nbc, dx/dist*3*dt, dz/dist*3*dt, bossSize);
         }
       }
     } else if(gracePeriod > 0) {
@@ -1565,7 +1598,8 @@ function update(dt) {
     if(nbc.flashTime > 0) nbc.flashTime -= dt;
 
     // Collision with player
-    const hitDist = nbc.boss ? 3 : (nbc.elite ? 1.5 : 0.8);
+    const bossR = nbc.boss ? Math.min(1.5 + (nbc.bossTier||1)*0.1, 2.5) : 0;
+    const hitDist = nbc.boss ? (bossR + 0.5) : (nbc.elite ? 1.5 : 0.8);
     if(dist < hitDist && playerInvincible <= 0 && shieldActive <= 0) {
       playerHealth--;
       damageTakenThisLevel = true;
@@ -1616,7 +1650,7 @@ function update(dt) {
           if(nbc.hp <= 0) {
             sfxExplosion();
             spawnExplosionParticles(nbc.x, nbc.z);
-            const reward = nbc.boss ? 500 : (nbc.elite ? 25 : 2);
+            const reward = nbc.boss ? (30 + (nbc.bossTier||1) * 20) : (nbc.elite ? 25 : 2);
             if(nbc.boss) {
               // Epic boss death: 100 particles, rainbow flash, victory
               spawnParticles(nbc.x, nbc.z, '#ff0000', 30);
@@ -1983,7 +2017,7 @@ function render() {
 
   // NBCs
   for(const nbc of nbcs) {
-    const size = nbc.boss ? 2.5 : (nbc.elite ? 1.2 : 0.4);
+    const size = nbc.boss ? Math.min(1.5 + (nbc.bossTier || 1) * 0.1, 2.5) : (nbc.elite ? 1.2 : 0.4);
     let color;
     if(nbc.flashTime > 0) {
       color = '#ffffff';
@@ -2056,13 +2090,14 @@ function render() {
 
     // Boss name label
     if(nbc.boss) {
+      const bossName = BOSS_NAMES[nbc.bossTier] || ('BOSS TIER ' + nbc.bossTier);
       ctx.save();
       ctx.font = 'bold 16px "Courier New", monospace';
       ctx.fillStyle = '#ff0000';
       ctx.shadowBlur = 15;
       ctx.shadowColor = '#ff0000';
       ctx.textAlign = 'center';
-      ctx.fillText('SUPREME NBC CORE', nbc.x*SCALE, nbc.z*SCALE - size*SCALE - 16);
+      ctx.fillText(bossName, nbc.x*SCALE, nbc.z*SCALE - size*SCALE - 16);
       ctx.restore();
     }
   }
