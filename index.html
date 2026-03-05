@@ -131,6 +131,7 @@ body.desktop-input .btn,body.desktop-input .btn-buy{cursor:pointer}
     <div id="lc-first-level" style="display:none;color:#0ff;font-size:20px;margin:8px 0">Great job! You earned your first tokens! 🪙</div>
     <div id="lc-new-item" class="lc-notification" style="display:none">💰 New item unlocked in shop!</div>
     <button class="btn btn-big" id="next-btn">NEXT LEVEL ▶</button>
+    <button class="btn" id="maze-btn" style="margin-top:5px;border-color:#ff0;color:#ff0">🏁 MAZE RACE</button>
     <button class="btn" id="shop-btn" style="margin-top:5px">🛒 SHOP</button>
   </div>
 
@@ -316,6 +317,7 @@ function loadSave() {
   if(!save.bestLevel) save.bestLevel=1;
   if(!save.shields) save.shields=0;
   if(!save.shieldsBought) save.shieldsBought=0;
+  if(!save.mazeWins) save.mazeWins=0;
 }
 function saveSave() { localStorage.setItem('lasergate_save', JSON.stringify(save)); }
 loadSave();
@@ -1752,6 +1754,355 @@ function checkGateOpen() {
   }
 }
 
+// ===== MAZE RACE MINI-GAME =====
+let mazeState = null; // null when not in maze
+
+function generateMaze(w, h, seed) {
+  // Generate maze using recursive backtracking
+  const rng = mulberry32(seed);
+  const grid = [];
+  for(let y=0;y<h;y++){
+    grid[y] = [];
+    for(let x=0;x<w;x++) grid[y][x] = {visited:false, walls:{n:true,s:true,e:true,w:true}};
+  }
+  const stack = [{x:0,y:0}];
+  grid[0][0].visited = true;
+  while(stack.length > 0) {
+    const cur = stack[stack.length-1];
+    const neighbors = [];
+    if(cur.y > 0 && !grid[cur.y-1][cur.x].visited) neighbors.push({x:cur.x,y:cur.y-1,dir:'n',opp:'s'});
+    if(cur.y < h-1 && !grid[cur.y+1][cur.x].visited) neighbors.push({x:cur.x,y:cur.y+1,dir:'s',opp:'n'});
+    if(cur.x < w-1 && !grid[cur.y][cur.x+1].visited) neighbors.push({x:cur.x+1,y:cur.y,dir:'e',opp:'w'});
+    if(cur.x > 0 && !grid[cur.y][cur.x-1].visited) neighbors.push({x:cur.x-1,y:cur.y,dir:'w',opp:'e'});
+    if(neighbors.length === 0) { stack.pop(); continue; }
+    const next = neighbors[Math.floor(rng()*neighbors.length)];
+    grid[cur.y][cur.x].walls[next.dir] = false;
+    grid[next.y][next.x].walls[next.opp] = false;
+    grid[next.y][next.x].visited = true;
+    stack.push({x:next.x,y:next.y});
+  }
+  return grid;
+}
+
+function solveMaze(grid, sx, sy, ex, ey) {
+  // BFS to find shortest path
+  const h = grid.length, w = grid[0].length;
+  const visited = Array.from({length:h}, ()=>Array(w).fill(false));
+  const parent = Array.from({length:h}, ()=>Array(w).fill(null));
+  const queue = [{x:sx,y:sy}];
+  visited[sy][sx] = true;
+  while(queue.length > 0) {
+    const cur = queue.shift();
+    if(cur.x === ex && cur.y === ey) break;
+    const cell = grid[cur.y][cur.x];
+    const dirs = [{dx:0,dy:-1,wall:'n'},{dx:0,dy:1,wall:'s'},{dx:1,dy:0,wall:'e'},{dx:-1,dy:0,wall:'w'}];
+    for(const d of dirs) {
+      if(cell.walls[d.wall]) continue;
+      const nx = cur.x+d.dx, ny = cur.y+d.dy;
+      if(nx<0||ny<0||nx>=w||ny>=h||visited[ny][nx]) continue;
+      visited[ny][nx] = true;
+      parent[ny][nx] = {x:cur.x,y:cur.y};
+      queue.push({x:nx,y:ny});
+    }
+  }
+  // Reconstruct path
+  const path = [];
+  let cx=ex, cy=ey;
+  while(cx!==sx||cy!==sy) {
+    path.unshift({x:cx,y:cy});
+    const p = parent[cy][cx];
+    if(!p) return path;
+    cx=p.x; cy=p.y;
+  }
+  path.unshift({x:sx,y:sy});
+  return path;
+}
+
+function startMazeRace() {
+  if(!save.mazeWins) save.mazeWins = 0;
+  const difficulty = save.mazeWins;
+  const mw = Math.min(7 + Math.floor(difficulty * 0.8), 15);
+  const mh = Math.min(7 + Math.floor(difficulty * 0.8), 15);
+  const grid = generateMaze(mw, mh, Date.now());
+  const path = solveMaze(grid, 0, 0, mw-1, mh-1);
+  const npcSpeed = 1.2 + difficulty * 0.25;
+  const reward = 5 + difficulty * 3;
+  mazeState = {
+    grid, path, mw, mh,
+    playerPos: {x:0, y:0},
+    npcPos: {x:0, y:0},
+    npcPathIdx: 0,
+    npcSpeed: npcSpeed,
+    npcProgress: 0,
+    npcSlowed: 0,
+    playerFinished: false,
+    npcFinished: false,
+    result: null, // 'win' or 'lose'
+    reward: reward,
+    difficulty: difficulty,
+    timer: 0,
+    moveCD: 0,
+    shotCD: 0
+  };
+  gameState = 'maze';
+  document.getElementById('levelcomplete-screen').classList.add('hidden');
+  document.getElementById('hud').style.display = 'none';
+  document.getElementById('pause-btn').style.display = 'none';
+  document.getElementById('shield-btn').style.display = 'none';
+}
+
+function updateMaze(dt) {
+  if(!mazeState || mazeState.result) return;
+  mazeState.timer += dt;
+  if(mazeState.moveCD > 0) mazeState.moveCD -= dt;
+  if(mazeState.shotCD > 0) mazeState.shotCD -= dt;
+  if(mazeState.npcSlowed > 0) mazeState.npcSlowed -= dt;
+
+  // Player movement via keys or joystick
+  const p = mazeState.playerPos;
+  const cell = mazeState.grid[p.y][p.x];
+  if(mazeState.moveCD <= 0) {
+    let moved = false;
+    if((keys['w']||keys['arrowup']||joystickDir.y < -0.5) && !cell.walls.n) { p.y--; moved = true; }
+    else if((keys['s']||keys['arrowdown']||joystickDir.y > 0.5) && !cell.walls.s) { p.y++; moved = true; }
+    else if((keys['a']||keys['arrowleft']||joystickDir.x < -0.5) && !cell.walls.w) { p.x--; moved = true; }
+    else if((keys['d']||keys['arrowright']||joystickDir.x > 0.5) && !cell.walls.e) { p.x++; moved = true; }
+    if(moved) {
+      mazeState.moveCD = 0.15;
+      playSound(600, 0.03, 'sine', 0.05);
+    }
+  }
+
+  // Shooting (slows NPC) - spacebar, mouse click, or right-side tap
+  if((keys[' '] || mouseDown || aimActive) && mazeState.shotCD <= 0) {
+    mazeState.shotCD = 0.8;
+    mazeState.npcSlowed = 1.5;
+    playSound(400, 0.06, 'sawtooth', 0.06);
+  }
+
+  // Check player finish
+  if(p.x === mazeState.mw-1 && p.y === mazeState.mh-1 && !mazeState.playerFinished) {
+    mazeState.playerFinished = true;
+    if(!mazeState.npcFinished) {
+      mazeState.result = 'win';
+      save.tokens += mazeState.reward;
+      save.mazeWins = (save.mazeWins||0) + 1;
+      saveSave();
+      sfxLevelComplete();
+    }
+  }
+
+  // NPC movement along solved path
+  const effectiveSpeed = mazeState.npcSlowed > 0 ? mazeState.npcSpeed * 0.3 : mazeState.npcSpeed;
+  mazeState.npcProgress += effectiveSpeed * dt;
+  while(mazeState.npcProgress >= 1 && mazeState.npcPathIdx < mazeState.path.length - 1) {
+    mazeState.npcProgress -= 1;
+    mazeState.npcPathIdx++;
+    const np = mazeState.path[mazeState.npcPathIdx];
+    mazeState.npcPos.x = np.x;
+    mazeState.npcPos.y = np.y;
+  }
+
+  // Check NPC finish
+  if(mazeState.npcPathIdx >= mazeState.path.length - 1 && !mazeState.npcFinished) {
+    mazeState.npcFinished = true;
+    if(!mazeState.playerFinished) {
+      mazeState.result = 'lose';
+      sfxGameOver();
+    }
+  }
+}
+
+function renderMaze() {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, W, H);
+
+  if(!mazeState) return;
+  const {grid, mw, mh, playerPos, npcPos} = mazeState;
+
+  // Calculate cell size to fit screen
+  const margin = 40;
+  const cellW = Math.min((W - margin*2) / mw, (H - margin*3) / mh);
+  const offX = (W - cellW * mw) / 2;
+  const offY = margin * 2;
+
+  // Title
+  ctx.save();
+  ctx.font = 'bold 22px "Courier New", monospace';
+  ctx.fillStyle = '#ff0';
+  ctx.textAlign = 'center';
+  ctx.shadowBlur = 12;
+  ctx.shadowColor = '#ff0';
+  ctx.fillText('🏁 MAZE RACE — Difficulty ' + (mazeState.difficulty + 1), W/2, margin + 5);
+  ctx.font = '14px "Courier New", monospace';
+  ctx.fillStyle = '#888';
+  ctx.shadowBlur = 0;
+  ctx.fillText('Race to bottom-right! Shoot to slow the NBC!', W/2, margin + 22);
+  ctx.restore();
+
+  // Draw maze cells
+  ctx.save();
+  ctx.strokeStyle = '#0ff';
+  ctx.lineWidth = 2;
+  ctx.shadowBlur = 4;
+  ctx.shadowColor = '#0ff';
+  for(let y=0;y<mh;y++){
+    for(let x=0;x<mw;x++){
+      const cx = offX + x*cellW;
+      const cy = offY + y*cellW;
+      const c = grid[y][x];
+      if(c.walls.n) { ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx+cellW, cy); ctx.stroke(); }
+      if(c.walls.s) { ctx.beginPath(); ctx.moveTo(cx, cy+cellW); ctx.lineTo(cx+cellW, cy+cellW); ctx.stroke(); }
+      if(c.walls.w) { ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx, cy+cellW); ctx.stroke(); }
+      if(c.walls.e) { ctx.beginPath(); ctx.moveTo(cx+cellW, cy); ctx.lineTo(cx+cellW, cy+cellW); ctx.stroke(); }
+    }
+  }
+  ctx.restore();
+
+  // Start marker
+  ctx.save();
+  ctx.fillStyle = '#0f0';
+  ctx.shadowBlur = 8;
+  ctx.shadowColor = '#0f0';
+  ctx.font = 'bold 12px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('START', offX + cellW/2, offY + cellW/2 + 4);
+  ctx.restore();
+
+  // End marker
+  ctx.save();
+  ctx.fillStyle = '#ff0';
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = '#ff0';
+  ctx.font = 'bold 12px "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('🏁', offX + (mw-0.5)*cellW, offY + (mh-0.5)*cellW + 5);
+  ctx.restore();
+
+  // NPC (red dot)
+  const npcSX = offX + (npcPos.x + 0.5) * cellW;
+  const npcSY = offY + (npcPos.y + 0.5) * cellW;
+  ctx.save();
+  ctx.fillStyle = mazeState.npcSlowed > 0 ? '#884400' : '#ff3333';
+  ctx.shadowBlur = 10;
+  ctx.shadowColor = '#ff0000';
+  ctx.beginPath();
+  ctx.arc(npcSX, npcSY, cellW*0.25, 0, Math.PI*2);
+  ctx.fill();
+  ctx.font = '10px "Courier New", monospace';
+  ctx.fillStyle = '#ff6666';
+  ctx.textAlign = 'center';
+  ctx.fillText('NBC', npcSX, npcSY - cellW*0.35);
+  ctx.restore();
+
+  // Player (blue dot)
+  const plSX = offX + (playerPos.x + 0.5) * cellW;
+  const plSY = offY + (playerPos.y + 0.5) * cellW;
+  const plPulse = 0.8 + 0.2 * Math.sin(Date.now() * 0.006);
+  ctx.save();
+  ctx.fillStyle = '#00ccff';
+  ctx.shadowBlur = 12 * plPulse;
+  ctx.shadowColor = '#00ccff';
+  ctx.beginPath();
+  ctx.arc(plSX, plSY, cellW*0.28, 0, Math.PI*2);
+  ctx.fill();
+  ctx.font = '10px "Courier New", monospace';
+  ctx.fillStyle = '#00ccff';
+  ctx.textAlign = 'center';
+  ctx.fillText('YOU', plSX, plSY - cellW*0.35);
+  ctx.restore();
+
+  // Shot cooldown indicator
+  if(mazeState.shotCD > 0) {
+    ctx.save();
+    ctx.font = '14px "Courier New", monospace';
+    ctx.fillStyle = '#666';
+    ctx.textAlign = 'center';
+    ctx.fillText('Reload...', W/2, H - 20);
+    ctx.restore();
+  } else if(!mazeState.result) {
+    ctx.save();
+    ctx.font = '14px "Courier New", monospace';
+    ctx.fillStyle = '#0ff';
+    ctx.textAlign = 'center';
+    ctx.fillText('SPACE / Tap right to shoot!', W/2, H - 20);
+    ctx.restore();
+  }
+
+  // NPC slowed indicator
+  if(mazeState.npcSlowed > 0) {
+    ctx.save();
+    ctx.font = 'bold 16px "Courier New", monospace';
+    ctx.fillStyle = '#ff8800';
+    ctx.textAlign = 'center';
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = '#ff8800';
+    ctx.fillText('NBC SLOWED!', W/2, offY - 8);
+    ctx.restore();
+  }
+
+  // Result overlay
+  if(mazeState.result) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.font = 'bold 36px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    if(mazeState.result === 'win') {
+      ctx.fillStyle = '#0f0';
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = '#0f0';
+      ctx.fillText('YOU WIN! +' + mazeState.reward + ' 🪙', W/2, H/2 - 20);
+    } else {
+      ctx.fillStyle = '#f00';
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = '#f00';
+      ctx.fillText('NBC WINS!', W/2, H/2 - 20);
+    }
+    ctx.font = '18px "Courier New", monospace';
+    ctx.fillStyle = '#888';
+    ctx.shadowBlur = 0;
+    ctx.fillText('Tap or press any key to continue', W/2, H/2 + 30);
+    ctx.restore();
+  }
+
+  // Scanline overlay
+  ctx.save();
+  ctx.globalAlpha = 0.04;
+  ctx.fillStyle = '#000000';
+  for(let sy=0; sy<H; sy+=3) ctx.fillRect(0, sy, W, 1);
+  ctx.restore();
+}
+
+function endMazeRace() {
+  mazeState = null;
+  gameState = 'levelcomplete';
+  document.getElementById('levelcomplete-screen').classList.remove('hidden');
+}
+
+// Maze race button handler
+document.getElementById('maze-btn').onclick = () => { startMazeRace(); };
+
+// Exit maze race on tap/key when result is shown
+document.addEventListener('keydown', (e) => {
+  if(gameState === 'maze' && mazeState && mazeState.result) {
+    endMazeRace();
+  }
+});
+document.addEventListener('touchstart', (e) => {
+  if(gameState === 'maze' && mazeState && mazeState.result) {
+    e.preventDefault();
+    endMazeRace();
+  }
+}, {passive:false});
+document.addEventListener('click', () => {
+  if(gameState === 'maze' && mazeState && mazeState.result) {
+    endMazeRace();
+  }
+});
+
 // ===== 2D RENDERING =====
 function drawGlow(x, y, radius, color) {
   ctx.save();
@@ -2456,8 +2807,13 @@ function animate(time) {
   requestAnimationFrame(animate);
   const dt = Math.min((time - (lastTime||time)) / 1000, 0.05);
   lastTime = time;
-  update(dt);
-  render();
+  if(gameState === 'maze') {
+    updateMaze(dt);
+    renderMaze();
+  } else {
+    update(dt);
+    render();
+  }
 }
 
 requestAnimationFrame(animate);
