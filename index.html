@@ -137,6 +137,8 @@ body.desktop-input .btn,body.desktop-input .btn-buy{cursor:pointer}
   <div id="shop-screen" class="screen hidden">
     <h2 style="color:#0ff;font-size:28px;margin:10px">SHOP</h2>
     <div id="shop-tokens" style="color:#ff0;font-size:18px;margin-bottom:5px"></div>
+    <div class="shop-section">🛡️ SHIELDS</div>
+    <div class="shop-grid" id="shields-grid"></div>
     <div class="shop-section">⚡ WEAPONS</div>
     <div class="shop-grid" id="weapons-grid"></div>
     <div class="shop-section">🎨 SKINS</div>
@@ -160,6 +162,7 @@ body.desktop-input .btn,body.desktop-input .btn-buy{cursor:pointer}
   <div id="perfect-msg" style="position:absolute;top:40%;left:50%;transform:translate(-50%,-50%);font-size:42px;color:#ffdd00;font-weight:bold;text-shadow:0 0 30px #ffdd00,0 0 60px #ff8800;pointer-events:none;z-index:150;display:none;font-family:'Courier New',monospace">PERFECT! ⭐</div>
   <div id="shield-down-msg" style="position:absolute;top:30%;left:50%;transform:translate(-50%,-50%);font-size:36px;color:#ff4400;font-weight:bold;text-shadow:0 0 20px #ff4400;pointer-events:none;z-index:150;display:none;font-family:'Courier New',monospace">SHIELD DOWN ⚠️</div>
   <button id="pause-btn" style="position:absolute;top:10px;right:10px;background:none;border:2px solid rgba(255,255,255,0.3);color:rgba(255,255,255,0.6);font-size:24px;width:44px;height:44px;border-radius:10px;pointer-events:auto;z-index:120;display:none;cursor:pointer">⏸</button>
+  <button id="shield-btn" style="position:absolute;bottom:12px;left:50%;transform:translateX(-50%);background:rgba(0,255,255,0.15);border:2px solid #0ff;color:#0ff;font-size:16px;font-family:'Courier New',monospace;padding:8px 18px;border-radius:10px;pointer-events:auto;z-index:120;display:none;cursor:pointer;text-shadow:0 0 8px #0ff;box-shadow:0 0 12px rgba(0,255,255,0.3);min-height:44px;min-width:80px">🛡️ SHIELD (0)</button>
 
   <div id="victory-screen" class="screen hidden">
     <h1 style="color:#ff0;font-size:36px;text-shadow:0 0 30px #ff0">🏆 VICTORY! 🏆</h1>
@@ -298,12 +301,12 @@ function sfxGameOver() {
 function sfxWallSpark() { playSound(1200, 0.02, 'square', 0.03); }
 
 // ===== SAVE STATE =====
-const DEFAULT_SAVE = {tokens:0,currentLevel:1,equippedGun:'pistol',equippedSkin:'blue',ownedGuns:['pistol'],ownedSkins:['blue'],bestLevel:1};
+const DEFAULT_SAVE = {tokens:0,currentLevel:1,equippedGun:'pistol',equippedSkin:'blue',ownedGuns:['pistol'],ownedSkins:['blue'],bestLevel:1,shields:0,shieldsBought:0};
 let save;
 function loadSave() {
   try { save = JSON.parse(localStorage.getItem('lasergate_save')); }
   catch(e) { save = null; }
-  if(!save) save = {tokens:0,currentLevel:1,equippedGun:'pistol',equippedSkin:'blue',ownedGuns:['pistol'],ownedSkins:['blue'],bestLevel:1};
+  if(!save) save = {tokens:0,currentLevel:1,equippedGun:'pistol',equippedSkin:'blue',ownedGuns:['pistol'],ownedSkins:['blue'],bestLevel:1,shields:0,shieldsBought:0};
   if(!save.ownedGuns || !Array.isArray(save.ownedGuns)) save.ownedGuns=['pistol'];
   if(!save.ownedSkins || !Array.isArray(save.ownedSkins)) save.ownedSkins=['blue'];
   if(!save.equippedGun) save.equippedGun='pistol';
@@ -311,6 +314,8 @@ function loadSave() {
   if(!save.tokens) save.tokens=0;
   if(!save.currentLevel) save.currentLevel=1;
   if(!save.bestLevel) save.bestLevel=1;
+  if(!save.shields) save.shields=0;
+  if(!save.shieldsBought) save.shieldsBought=0;
 }
 function saveSave() { localStorage.setItem('lasergate_save', JSON.stringify(save)); }
 loadSave();
@@ -318,18 +323,22 @@ loadSave();
 // ===== WEAPONS & SKINS =====
 const WEAPONS = [
   {id:'pistol',name:'Laser Pistol',cost:0,damage:1,fireRate:600,type:'TAP',color:'#4488ff',colorName:'blue'},
+  {id:'sword',name:'Neon Blade',cost:15,damage:3,fireRate:400,type:'MELEE',color:'#00ffcc',colorName:'teal',range:2.0},
   {id:'pulse',name:'Pulse Blaster',cost:25,damage:2,fireRate:400,type:'TAP',color:'#00ff44',colorName:'green'},
   {id:'zapper',name:'Rapid Zapper',cost:75,damage:1,fireRate:150,type:'AUTO',color:'#ffff00',colorName:'yellow'},
+  {id:'scatter',name:'Scatter Shot',cost:120,damage:1,fireRate:500,type:'TAP',color:'#ff8844',colorName:'orange',spread:3},
   {id:'plasma',name:'Plasma Cannon',cost:200,damage:3,fireRate:700,type:'TAP',color:'#aa44ff',colorName:'purple'},
+  {id:'katana',name:'Plasma Katana',cost:350,damage:5,fireRate:300,type:'MELEE',color:'#ff00ff',colorName:'magenta',range:2.5},
   {id:'neon',name:'Neon Destroyer',cost:500,damage:4,fireRate:180,type:'AUTO',color:'#ff1493',colorName:'hotpink'},
   {id:'supreme',name:'Supreme Laser',cost:1500,damage:5,fireRate:100,type:'AUTO',color:'#ffffff',colorName:'white'}
 ];
 const SKINS = [
-  {id:'blue',name:'Blue Knight',cost:0,color:'#4488ff'},
-  {id:'red',name:'Red Racer',cost:50,color:'#ff2200'},
-  {id:'gold',name:'Gold Champion',cost:250,color:'#ffcc00'},
-  {id:'rainbow',name:'Rainbow Warrior',cost:750,color:'#ffffff',rainbow:true},
-  {id:'shadow',name:'Shadow Ghost',cost:1000,color:'#220033',outline:'#aa00ff'}
+  {id:'blue',name:'Blue Knight',cost:0,color:'#4488ff',hearts:1,speed:1.0},
+  {id:'red',name:'Red Racer',cost:50,color:'#ff2200',hearts:1,speed:1.2},
+  {id:'green',name:'Green Guard',cost:100,color:'#00ff66',hearts:2,speed:1.0},
+  {id:'gold',name:'Gold Champion',cost:250,color:'#ffcc00',hearts:3,speed:1.1},
+  {id:'rainbow',name:'Rainbow Warrior',cost:750,color:'#ffffff',rainbow:true,hearts:4,speed:1.15},
+  {id:'shadow',name:'Shadow Ghost',cost:1000,color:'#220033',outline:'#aa00ff',hearts:5,speed:1.25}
 ];
 function getWeapon() { return WEAPONS.find(w=>w.id===save.equippedGun)||WEAPONS[0]; }
 function getSkin() { return SKINS.find(s=>s.id===save.equippedSkin)||SKINS[0]; }
@@ -390,6 +399,7 @@ let gracePeriod = 0;
 let deathFreezeTimer = 0;
 let paused = false;
 let damageTakenThisLevel = false;
+let playerMaxHealth = 1;
 let comboCount = 0;
 let comboTimer = 0;
 let lastPurchaseTime = 0;
@@ -412,7 +422,7 @@ let shieldDownFlash = 0;
 let eliteDeathFlash = 0;
 let bossDeathFlash = 0;
 let healthRestoredMsg = 0;
-let prevHealthBeforeLevel = 5;
+let prevHealthBeforeLevel = 1;
 let roomW = 20, roomH = 20;
 
 // Input mode detection: 'touch' or 'mouse'
@@ -560,8 +570,11 @@ function generateLevel(levelNum) {
 
   // Player
   createPlayer();
-  if(playerHealth < 5) healthRestoredMsg = 2.0;
-  playerHealth = 5;
+  const skinData = getSkin();
+  const maxHp = skinData.hearts || 1;
+  if(playerHealth < maxHp) healthRestoredMsg = 2.0;
+  playerHealth = maxHp;
+  playerMaxHealth = maxHp;
   playerInvincible = 0;
 
   // NBCs
@@ -594,17 +607,7 @@ function generateLevel(levelNum) {
   }
   keyObj = {x: kx, z: kz, rot: 0};
 
-  // Shield pickups
-  const shieldCount = 1 + (rng() > 0.5 ? 1 : 0);
-  for(let i=0;i<shieldCount;i++){
-    let sx, sz;
-    for(let attempt = 0; attempt < 20; attempt++) {
-      sx = 3 + rng()*(roomW-6);
-      sz = 3 + rng()*(roomH-6);
-      if(!(sx < 4 && sz < 4) && !checkWallCollision(sx, sz, 0.6)) break;
-    }
-    shieldPickups.push({x: sx, z: sz, rot: 0});
-  }
+  // Shields are now shop-only (no random pickups)
 
   // Gate
   gateObj = {x: roomW - 0.1, z: roomH/2};
@@ -672,13 +675,82 @@ function fireLaser(x, z, dx, dz, damage, color, fromPlayer) {
   if(fromPlayer) sfxShoot(getWeapon().colorName);
 }
 
+let swordSwingAngle = 0;
+let swordSwingTimer = 0;
+
 function playerShoot(dirX, dirZ) {
   const w = getWeapon();
   const now = Date.now();
   if(now - lastFireTime < w.fireRate) return;
   lastFireTime = now;
   playerFaceX = dirX; playerFaceZ = dirZ;
-  fireLaser(player.x + dirX*0.6, player.z + dirZ*0.6, dirX, dirZ, w.damage, w.color, true);
+
+  if(w.type === 'MELEE') {
+    // Melee sword attack: damage all NBCs in range in a cone
+    const range = w.range || 2.0;
+    swordSwingAngle = Math.atan2(dirZ, dirX);
+    swordSwingTimer = 0.25;
+    playSound(600, 0.08, 'sawtooth', 0.1);
+    playSoundRamp(800, 400, 0.1, 'sine', 0.06);
+    let hitAny = false;
+    for(let j = nbcs.length-1; j >= 0; j--) {
+      const nbc = nbcs[j];
+      const ddx = nbc.x - player.x;
+      const ddz = nbc.z - player.z;
+      const dist = Math.sqrt(ddx*ddx+ddz*ddz);
+      if(dist > range + (nbc.boss ? 2.5 : (nbc.elite ? 1.2 : 0.5))) continue;
+      // Check if in a ~120 degree cone in front
+      const dot = (ddx*dirX+ddz*dirZ)/Math.max(dist,0.01);
+      if(dot < 0.3) continue;
+      hitAny = true;
+      nbc.hp -= w.damage;
+      nbc.flashTime = 0.1;
+      sfxHit();
+      showDamageNum(nbc.x, nbc.z, w.damage);
+      // Knockback
+      if(!nbc.boss) {
+        const kb = 0.5;
+        nbc.x += dirX * kb;
+        nbc.z += dirZ * kb;
+      }
+      if(nbc.hp <= 0) {
+        sfxExplosion();
+        spawnExplosionParticles(nbc.x, nbc.z);
+        const reward = nbc.boss ? 500 : (nbc.elite ? 25 : 2);
+        if(nbc.boss) { spawnParticles(nbc.x, nbc.z, '#ff0000', 30); spawnParticles(nbc.x, nbc.z, '#ffaa00', 30); spawnParticles(nbc.x, nbc.z, '#00ffff', 20); spawnParticles(nbc.x, nbc.z, '#ff00ff', 20); screenShake = 1.0; damageFlash = 0.5; bossDeathFlash = 2.0; }
+        else if(nbc.elite) { spawnParticles(nbc.x, nbc.z, '#ffaa00', 50); screenShake = 0.6; damageFlash = 0.3; eliteDeathFlash = 1.5; showMiniBossMsg(); }
+        else { spawnParticles(nbc.x, nbc.z, '#ff4400', 25); damageFlash = 0.06; showKillMsg(nbc.x, nbc.z); }
+        comboTimer = 3.0; comboCount++;
+        if(comboCount >= 2) showCombo(comboCount);
+        save.tokens += reward + (comboCount >= 2 ? comboCount : 0);
+        tokens_earned_this_level += reward + (comboCount >= 2 ? comboCount : 0);
+        saveSave(); updateHUD();
+        showTokenFloat(nbc.x, nbc.z, reward + (comboCount >= 2 ? comboCount : 0));
+        nbcs.splice(j, 1);
+        checkGateOpen();
+      }
+    }
+    if(!hitAny) {
+      // Swing particles even on miss
+      for(let sp=0;sp<5;sp++){
+        const a = swordSwingAngle + (Math.random()-0.5)*0.8;
+        const d = 0.8 + Math.random()*1.2;
+        particles.push({x:player.x+Math.cos(a)*d, z:player.z+Math.sin(a)*d, dx:Math.cos(a)*3, dz:Math.sin(a)*3, life:0.2, color:w.color});
+      }
+    }
+  } else if(w.spread) {
+    // Scatter shot: fire multiple projectiles in a spread
+    const baseAngle = Math.atan2(dirZ, dirX);
+    const spreadAngle = 0.25;
+    for(let s=0;s<w.spread;s++){
+      const offset = (s - (w.spread-1)/2) * spreadAngle;
+      const sx = Math.cos(baseAngle+offset);
+      const sz = Math.sin(baseAngle+offset);
+      fireLaser(player.x + sx*0.6, player.z + sz*0.6, sx, sz, w.damage, w.color, true);
+    }
+  } else {
+    fireLaser(player.x + dirX*0.6, player.z + dirZ*0.6, dirX, dirZ, w.damage, w.color, true);
+  }
 }
 
 // ===== PARTICLES =====
@@ -706,12 +778,25 @@ function showDamageNum(wx, wz, dmg) {
 // ===== HUD =====
 function updateHUD() {
   let h = '';
-  for(let i=0;i<5;i++) h += i < playerHealth ? '❤️' : '🖤';
+  for(let i=0;i<playerMaxHealth;i++) h += i < playerHealth ? '❤️' : '🖤';
   if(shieldActive > 0) h += ' 🛡️' + Math.ceil(shieldActive) + 's';
   document.getElementById('hearts').innerHTML = h;
   document.getElementById('level-info').textContent = 'Level ' + currentLevel + ' — ' + getLevelName(currentLevel);
   if(shieldDownFlash > 0) document.getElementById('level-info').textContent = '⚠️ SHIELD DOWN ⚠️';
   document.getElementById('tokens').textContent = '🪙 ' + save.tokens;
+  // Shield button
+  const shieldBtn = document.getElementById('shield-btn');
+  if(gameState === 'playing') {
+    shieldBtn.style.display = 'block';
+    shieldBtn.textContent = '🛡️ SHIELD (' + save.shields + ')';
+    shieldBtn.disabled = save.shields <= 0 || shieldActive > 0;
+  } else {
+    shieldBtn.style.display = 'none';
+  }
+}
+
+function getShieldCost() {
+  return 10 + save.shieldsBought * 5;
 }
 
 // ===== SHOP =====
@@ -719,6 +804,33 @@ function openShop() {
   gameState = 'shop';
   document.getElementById('shop-screen').classList.remove('hidden');
   document.getElementById('shop-tokens').textContent = '🪙 ' + save.tokens + ' tokens';
+
+  // Shield section
+  const shg = document.getElementById('shields-grid');
+  shg.innerHTML = '';
+  const shieldCost = getShieldCost();
+  const canBuyShield = save.tokens >= shieldCost;
+  const shDiv = document.createElement('div');
+  shDiv.className = 'shop-item' + (!canBuyShield ? ' locked' : '');
+  shDiv.innerHTML = '<h4 style="color:#00ffff">🛡️ Shield</h4><div class="stats">Lasts 10s | Blocks all damage</div><div class="stats">You have: ' + save.shields + '</div><div class="cost">' + shieldCost + ' 🪙</div>';
+  const shBtn = document.createElement('button');
+  shBtn.className = 'btn btn-buy';
+  shBtn.textContent = canBuyShield ? 'BUY' : '🔒 ' + shieldCost + ' 🪙';
+  if(!canBuyShield) shBtn.disabled = true;
+  shBtn.onclick = () => {
+    const now = Date.now();
+    if(now - lastPurchaseTime < 200) return;
+    lastPurchaseTime = now;
+    if(save.tokens >= getShieldCost()) {
+      save.tokens -= getShieldCost();
+      save.shields++;
+      save.shieldsBought++;
+      saveSave();
+      openShop();
+    }
+  };
+  shDiv.appendChild(shBtn);
+  shg.appendChild(shDiv);
 
   const wg = document.getElementById('weapons-grid');
   wg.innerHTML = '';
@@ -728,7 +840,9 @@ function openShop() {
     const canBuy = save.tokens >= w.cost;
     const div = document.createElement('div');
     div.className = 'shop-item' + (equipped ? ' equipped-item' : (owned ? ' owned' : '')) + (!owned && !canBuy ? ' locked' : '');
-    div.innerHTML = '<h4 style="color:'+w.color+'">'+(equipped?'✅ ':'')+w.name+'</h4><div class="stats">DMG:'+w.damage+' | '+w.type+'</div><div class="cost">'+(w.cost===0?'FREE':w.cost+' 🪙')+'</div>';
+    const typeLabel = w.type === 'MELEE' ? '⚔️ MELEE' : (w.type === 'AUTO' ? '🔫 AUTO' : '🔫 TAP');
+    const extraInfo = w.spread ? ' | x'+w.spread : (w.range ? ' | Range:'+w.range : '');
+    div.innerHTML = '<h4 style="color:'+w.color+'">'+(equipped?'✅ ':'')+w.name+'</h4><div class="stats">DMG:'+w.damage+' | '+typeLabel+extraInfo+'</div><div class="cost">'+(w.cost===0?'FREE':w.cost+' 🪙')+'</div>';
     const btn = document.createElement('button');
     btn.className = 'btn btn-buy' + (equipped ? ' equipped' : '');
     if(equipped) btn.textContent = '✅ EQUIPPED';
@@ -755,7 +869,10 @@ function openShop() {
     const canBuy = save.tokens >= s.cost;
     const div = document.createElement('div');
     div.className = 'shop-item' + (equipped ? ' equipped-item' : (owned ? ' owned' : '')) + (!owned && !canBuy ? ' locked' : '');
-    div.innerHTML = '<h4>'+(equipped?'✅ ':'')+s.name+'</h4><div style="width:30px;height:30px;border-radius:50%;background:'+(s.rainbow?'linear-gradient(135deg,red,orange,yellow,green,blue,violet)':s.color)+';margin:6px auto;border:2px solid '+(s.outline||s.color)+'"></div><div class="cost">'+(s.cost===0?'FREE':s.cost+' 🪙')+'</div>';
+    let heartStr = '';
+    for(let hi=0;hi<(s.hearts||1);hi++) heartStr += '❤️';
+    const speedStr = s.speed > 1.0 ? ' | Speed +' + Math.round((s.speed-1)*100) + '%' : '';
+    div.innerHTML = '<h4>'+(equipped?'✅ ':'')+s.name+'</h4><div style="width:30px;height:30px;border-radius:50%;background:'+(s.rainbow?'linear-gradient(135deg,red,orange,yellow,green,blue,violet)':s.color)+';margin:6px auto;border:2px solid '+(s.outline||s.color)+'"></div><div class="stats">'+heartStr+speedStr+'</div><div class="cost">'+(s.cost===0?'FREE':s.cost+' 🪙')+'</div>';
     const btn = document.createElement('button');
     btn.className = 'btn btn-buy' + (equipped ? ' equipped' : '');
     if(equipped) btn.textContent = '✅ EQUIPPED';
@@ -848,6 +965,21 @@ document.getElementById('story-ok').onclick = () => {
   document.getElementById('story-popup').style.display = 'none';
   paused = false;
 };
+// Shield activation button
+document.getElementById('shield-btn').addEventListener('touchend', (e) => {
+  e.stopPropagation();
+  activateShield();
+});
+document.getElementById('shield-btn').onclick = () => { activateShield(); };
+function activateShield() {
+  if(gameState !== 'playing' || save.shields <= 0 || shieldActive > 0) return;
+  save.shields--;
+  shieldActive = 10;
+  saveSave();
+  sfxShieldPickup();
+  spawnParticles(player.x, player.z, '#00ffff', 15);
+  updateHUD();
+}
 
 function startLevel() {
   gameState = 'playing';
@@ -855,6 +987,7 @@ function startLevel() {
   document.getElementById('pause-overlay').classList.add('hidden');
   document.getElementById('hud').style.display = 'block';
   document.getElementById('pause-btn').style.display = 'block';
+  document.getElementById('shield-btn').style.display = 'block';
   // Joystick and aim are drawn on canvas now
   document.getElementById('joystick-base').style.display = 'none';
   document.getElementById('aim-indicator').style.display = 'none';
@@ -871,6 +1004,7 @@ function levelComplete() {
   sfxLevelComplete();
   document.getElementById('hud').style.display = 'none';
   document.getElementById('pause-btn').style.display = 'none';
+  document.getElementById('shield-btn').style.display = 'none';
   document.getElementById('joystick-base').style.display = 'none';
   document.getElementById('aim-indicator').style.display = 'none';
 
@@ -941,6 +1075,7 @@ function gameOver() {
   sfxGameOver();
   document.getElementById('hud').style.display = 'none';
   document.getElementById('pause-btn').style.display = 'none';
+  document.getElementById('shield-btn').style.display = 'none';
   document.getElementById('joystick-base').style.display = 'none';
   document.getElementById('aim-indicator').style.display = 'none';
   document.getElementById('go-level').textContent = 'Level ' + currentLevel;
@@ -1177,7 +1312,8 @@ function update(dt) {
   // Grace period countdown
   if(gracePeriod > 0) gracePeriod -= dt;
 
-  const playerSpeed = 5;
+  const skinSpeed = getSkin().speed || 1.0;
+  const playerSpeed = 5 * skinSpeed;
   let mx = 0, mz = 0;
 
   mx = joystickDir.x * playerSpeed * dt;
@@ -1291,19 +1427,7 @@ function update(dt) {
     }
   }
 
-  // Shield pickups
-  for(let i = shieldPickups.length-1; i >= 0; i--) {
-    const s = shieldPickups[i];
-    s.rot += dt * 4;
-    const dx = player.x - s.x;
-    const dz = player.z - s.z;
-    if(dx*dx+dz*dz < 1) {
-      shieldActive = 60;
-      shieldPickups.splice(i, 1);
-      sfxShieldPickup();
-      spawnParticles(player.x, player.z, '#00ffff', 15);
-    }
-  }
+  // Shield pickups (legacy — shields are now shop-only)
 
   // Shield timer
   if(shieldActive > 0) {
@@ -1575,6 +1699,7 @@ function update(dt) {
   if(eliteDeathFlash > 0) eliteDeathFlash -= dt;
   if(bossDeathFlash > 0) bossDeathFlash -= dt;
   if(healthRestoredMsg > 0) healthRestoredMsg -= dt;
+  if(swordSwingTimer > 0) swordSwingTimer -= dt;
 
   // Laser trails
   for(const l of lasers) {
@@ -2003,6 +2128,34 @@ function render() {
       ctx.arc(player.x*SCALE + playerFaceX*dotDist, player.z*SCALE + playerFaceZ*dotDist, 5, 0, Math.PI*2);
       ctx.fill();
       ctx.restore();
+
+      // Sword swing arc
+      if(swordSwingTimer > 0) {
+        const w = getWeapon();
+        if(w.type === 'MELEE') {
+          const swingProgress = 1 - swordSwingTimer / 0.25;
+          const arcStart = swordSwingAngle - 0.8 + swingProgress * 1.6;
+          const arcEnd = arcStart + 0.6;
+          const swordLen = (w.range || 2.0) * SCALE;
+          ctx.save();
+          ctx.strokeStyle = w.color;
+          ctx.lineWidth = 4;
+          ctx.shadowBlur = 20;
+          ctx.shadowColor = w.color;
+          ctx.globalAlpha = 1 - swingProgress * 0.5;
+          ctx.beginPath();
+          ctx.arc(player.x*SCALE, player.z*SCALE, swordLen, arcStart, arcEnd);
+          ctx.stroke();
+          // Sword blade line
+          const bladeAngle = swordSwingAngle + (swingProgress - 0.5) * 1.6;
+          ctx.beginPath();
+          ctx.moveTo(player.x*SCALE, player.z*SCALE);
+          ctx.lineTo(player.x*SCALE + Math.cos(bladeAngle)*swordLen, player.z*SCALE + Math.sin(bladeAngle)*swordLen);
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
 
       // Shield ring (pulsing)
       if(shieldActive > 0) {
