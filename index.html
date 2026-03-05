@@ -410,6 +410,9 @@ let paused = false;
 let damageTakenThisLevel = false;
 let playerMaxHealth = 1;
 let comboCount = 0;
+let speedBurst = 0; // bonus speed after kills
+let killStreak = 0;
+let killStreakBest = 0;
 let comboTimer = 0;
 let lastPurchaseTime = 0;
 
@@ -634,6 +637,8 @@ function generateLevel(levelNum) {
   damageTakenThisLevel = false;
   comboCount = 0;
   comboTimer = 0;
+  killStreak = 0;
+  speedBurst = 0;
   updateHUD();
 
   // Handle 0 NBCs edge case
@@ -1055,6 +1060,8 @@ function levelComplete() {
   const completedLevel = currentLevel - 1;
   document.getElementById('lc-title').textContent = 'LEVEL ' + completedLevel + ' COMPLETE!';
   let tokenText = '+' + tokens_earned_this_level + ' 🪙 earned\nTotal: ' + save.tokens + ' 🪙';
+  if(killStreakBest >= 3) tokenText += '\n⚡ Best kill streak: ' + killStreakBest;
+  if(!damageTakenThisLevel) tokenText += '\n⭐ Perfect — no damage taken!';
   const milestones = {10:'🔥 Outer walls breached!',25:'⚡ Quarter way there!',50:'🏆 HALFWAY! You legend!',75:'💀 The end is near...',89:'🚨 Elite sector unlocked!',99:'👑 One level to go!'};
   if(milestones[completedLevel]) tokenText += '\n\n' + milestones[completedLevel];
   document.getElementById('lc-tokens').innerHTML = tokenText.replace(/\n/g, '<br>');
@@ -1300,6 +1307,26 @@ function sfxBuzzer() {
   playSound(200, 0.15, 'square', 0.08);
 }
 
+function showCritNum(wx, wz, dmg) {
+  const sx = (wx - camX) * SCALE + canvas.width/2;
+  const sy = (wz - camY) * SCALE + canvas.height/2 - 40;
+  const div = document.createElement('div');
+  div.style.cssText = 'position:absolute;font-size:24px;color:#ff00ff;font-weight:bold;text-shadow:0 0 10px #ff00ff,0 0 20px #ff00aa;pointer-events:none;z-index:150;animation:dmgFloat 1s ease-out forwards;font-family:"Courier New",monospace';
+  div.textContent = 'CRIT! -' + dmg;
+  div.style.left = sx + 'px';
+  div.style.top = sy + 'px';
+  document.getElementById('damage-nums').appendChild(div);
+  setTimeout(()=>div.remove(), 1000);
+}
+
+function showStreakMsg(streak) {
+  const div = document.createElement('div');
+  div.style.cssText = 'position:absolute;top:25%;left:50%;transform:translate(-50%,-50%);font-size:32px;color:#00ff88;text-shadow:0 0 20px #00ff88,0 0 40px #00ff44;text-align:center;pointer-events:none;z-index:150;animation:dmgFloat 2s ease-out forwards;font-family:"Courier New",monospace;font-weight:bold;white-space:nowrap';
+  div.textContent = streak + ' KILL STREAK! +' + streak + ' 🪙';
+  document.getElementById('damage-nums').appendChild(div);
+  setTimeout(()=>div.remove(), 2000);
+}
+
 function showCombo(count) {
   const el = document.getElementById('combo-msg');
   const emojis = ['', '', '🔥', '⚡', '💥', '☄️'];
@@ -1329,7 +1356,8 @@ function update(dt) {
   if(gracePeriod > 0) gracePeriod -= dt;
 
   const skinSpeed = getSkin().speed || 1.0;
-  const playerSpeed = 5 * skinSpeed;
+  const burstMult = speedBurst > 0 ? 1.4 : 1.0;
+  const playerSpeed = 5 * skinSpeed * burstMult;
   let mx = 0, mz = 0;
 
   mx = joystickDir.x * playerSpeed * dt;
@@ -1593,6 +1621,7 @@ function update(dt) {
     if(dist < hitDist && playerInvincible <= 0 && shieldActive <= 0) {
       playerHealth--;
       damageTakenThisLevel = true;
+      killStreak = 0;
       playerInvincible = 1.5;
       screenShake = 0.5;
       damageFlash = 0.2;
@@ -1631,10 +1660,18 @@ function update(dt) {
         const ddz = l.z - nbc.z;
         const hitR = nbc.boss ? 2.5 : (nbc.elite ? 1.2 : 0.5);
         if(ddx*ddx+ddz*ddz < hitR*hitR) {
-          nbc.hp -= l.damage;
-          nbc.flashTime = 0.1;
+          // Critical hit: 15% chance for double damage
+          const isCrit = Math.random() < 0.15;
+          const dmg = isCrit ? l.damage * 2 : l.damage;
+          nbc.hp -= dmg;
+          nbc.flashTime = isCrit ? 0.2 : 0.1;
           sfxHit();
-          showDamageNum(nbc.x, nbc.z, l.damage);
+          if(isCrit) {
+            playSound(1200, 0.08, 'sine', 0.08);
+            showCritNum(nbc.x, nbc.z, dmg);
+          } else {
+            showDamageNum(nbc.x, nbc.z, dmg);
+          }
           lasers.splice(i, 1);
 
           if(nbc.hp <= 0) {
@@ -1672,11 +1709,22 @@ function update(dt) {
               showCombo(comboCount);
             }
 
-            save.tokens += reward + comboBonus;
-            tokens_earned_this_level += reward + comboBonus;
+            // Speed burst on kill
+            speedBurst = 2.0;
+            killStreak++;
+            if(killStreak > killStreakBest) killStreakBest = killStreak;
+            // Kill streak bonus at 5, 10, 15...
+            let streakBonus = 0;
+            if(killStreak > 0 && killStreak % 5 === 0) {
+              streakBonus = killStreak;
+              showStreakMsg(killStreak);
+            }
+
+            save.tokens += reward + comboBonus + streakBonus;
+            tokens_earned_this_level += reward + comboBonus + streakBonus;
             saveSave();
             updateHUD();
-            showTokenFloat(nbc.x, nbc.z, reward + comboBonus);
+            showTokenFloat(nbc.x, nbc.z, reward + comboBonus + streakBonus);
             nbcs.splice(j, 1);
             checkGateOpen();
           }
@@ -1689,6 +1737,7 @@ function update(dt) {
       if(ddx*ddx+ddz*ddz < 0.4 && playerInvincible <= 0 && shieldActive <= 0) {
         playerHealth--;
         damageTakenThisLevel = true;
+      killStreak = 0;
         playerInvincible = 1.5;
         screenShake = 0.5;
         damageFlash = 0.2;
@@ -1724,6 +1773,7 @@ function update(dt) {
   if(bossDeathFlash > 0) bossDeathFlash -= dt;
   if(healthRestoredMsg > 0) healthRestoredMsg -= dt;
   if(swordSwingTimer > 0) swordSwingTimer -= dt;
+  if(speedBurst > 0) speedBurst -= dt;
 
   // Laser trails
   for(const l of lasers) {
@@ -2558,6 +2608,25 @@ function render() {
         }
       }
 
+      // Speed burst effect
+      if(speedBurst > 0) {
+        const burstPulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.012);
+        ctx.save();
+        ctx.strokeStyle = '#00ff88';
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 12 * burstPulse;
+        ctx.shadowColor = '#00ff88';
+        ctx.globalAlpha = speedBurst / 2.0 * 0.7;
+        // Speed lines
+        for(let sl=0;sl<3;sl++){
+          const a = Date.now() * 0.008 + sl * Math.PI * 2/3;
+          ctx.beginPath();
+          ctx.arc(player.x*SCALE, player.z*SCALE, baseR + 10 + sl*4, a, a + 0.6);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
       // Shield ring (pulsing)
       if(shieldActive > 0) {
         const shPulse = 0.6 + 0.4 * Math.sin(Date.now() * 0.006);
@@ -2685,6 +2754,30 @@ function render() {
       // waiting for gate (shouldn't happen if all dead + key)
     } else if(gateOpen && gateObj) {
       drawDirectionalArrow(W, H, gateObj.x, gateObj.z, '→ Go to the EXIT!', '#00ff00');
+    }
+  }
+
+  // NBC radar — edge indicators for offscreen enemies
+  if(player && nbcs.length > 0) {
+    const margin = 20;
+    for(const nbc of nbcs) {
+      const nsx = (nbc.x - camX) * SCALE + W/2;
+      const nsz = (nbc.z - camY) * SCALE + H/2;
+      if(nsx > margin && nsx < W-margin && nsz > margin && nsz < H-margin) continue;
+      // Clamp to screen edge
+      const cx = Math.max(margin, Math.min(W-margin, nsx));
+      const cy = Math.max(margin, Math.min(H-margin, nsz));
+      const dotColor = nbc.boss ? '#ff0000' : (nbc.elite ? '#ffaa00' : '#ff4444');
+      const dotSize = nbc.boss ? 6 : (nbc.elite ? 5 : 3);
+      ctx.save();
+      ctx.fillStyle = dotColor;
+      ctx.shadowBlur = 8;
+      ctx.shadowColor = dotColor;
+      ctx.globalAlpha = 0.6 + 0.4 * Math.sin(Date.now() * 0.006);
+      ctx.beginPath();
+      ctx.arc(cx, cy, dotSize, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
     }
   }
 
