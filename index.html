@@ -563,19 +563,7 @@ function generateLevel(levelNum) {
     wallArea -= removed.w * removed.h;
   }
 
-  // Neon lights on walls
-  const numLights = Math.max(8, 5 + Math.floor(levelNum/5));
-  const lightColors = ['#00ffff', '#ff00ff', '#00ff44'];
-  for(let i=0;i<numLights;i++){
-    const c = lightColors[i%3];
-    const side = Math.floor(rng()*4);
-    let lx, lz;
-    if(side===0) { lx = rng()*roomW; lz = 0.3; }
-    else if(side===1) { lx = rng()*roomW; lz = roomH-0.3; }
-    else if(side===2) { lx = 0.3; lz = rng()*roomH; }
-    else { lx = roomW-0.3; lz = rng()*roomH; }
-    neonLights.push({x: lx, z: lz, color: c});
-  }
+  // Wall lights removed per Edmund's request
 
   // Towers
   const towerCount = levelNum >= 5 ? Math.min(1 + Math.floor((levelNum - 5) / 15), 5) : 0;
@@ -2233,64 +2221,79 @@ function render() {
   }
   ctx.translate(ox, oy);
 
-  // Floor grid
-  ctx.fillStyle = '#2d2d4a';
+  // Floor — subtle gradient from center
+  const floorGrad = ctx.createRadialGradient(roomW/2*SCALE, roomH/2*SCALE, 0, roomW/2*SCALE, roomH/2*SCALE, roomW*SCALE*0.7);
+  floorGrad.addColorStop(0, '#2d2d50');
+  floorGrad.addColorStop(1, '#1a1a30');
+  ctx.fillStyle = floorGrad;
   ctx.fillRect(0, 0, roomW * SCALE, roomH * SCALE);
+
   // Grid lines with proximity glow near player
   const gridPulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.002);
   for(let gx=0; gx<=roomW; gx++){
     const distToPlayer = player ? Math.abs(gx - player.x) : 999;
-    const glow = distToPlayer < 3 ? (0.25 + 0.15 * gridPulse * (1 - distToPlayer/3)) : 0.12;
-    ctx.strokeStyle = 'rgba(58,58,96,' + glow + ')';
+    const glow = distToPlayer < 4 ? (0.3 + 0.2 * gridPulse * (1 - distToPlayer/4)) : 0.08;
+    ctx.strokeStyle = 'rgba(80,80,140,' + glow + ')';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(gx*SCALE, 0); ctx.lineTo(gx*SCALE, roomH*SCALE); ctx.stroke();
   }
   for(let gz=0; gz<=roomH; gz++){
     const distToPlayer = player ? Math.abs(gz - player.z) : 999;
-    const glow = distToPlayer < 3 ? (0.25 + 0.15 * gridPulse * (1 - distToPlayer/3)) : 0.12;
-    ctx.strokeStyle = 'rgba(58,58,96,' + glow + ')';
+    const glow = distToPlayer < 4 ? (0.3 + 0.2 * gridPulse * (1 - distToPlayer/4)) : 0.08;
+    ctx.strokeStyle = 'rgba(80,80,140,' + glow + ')';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0, gz*SCALE); ctx.lineTo(roomW*SCALE, gz*SCALE); ctx.stroke();
   }
 
-  // Towers
+  // Towers — improved with gradient and glow
   for(const t of towers) {
-    ctx.fillStyle = '#444460';
+    const tGrad = ctx.createLinearGradient((t.x-0.8)*SCALE, (t.z-0.8)*SCALE, (t.x+0.8)*SCALE, (t.z+0.8)*SCALE);
+    tGrad.addColorStop(0, '#3a3a58');
+    tGrad.addColorStop(1, '#505078');
+    ctx.fillStyle = tGrad;
     ctx.fillRect((t.x-0.8)*SCALE, (t.z-0.8)*SCALE, 1.6*SCALE, 1.6*SCALE);
-    ctx.strokeStyle = '#555580';
+    ctx.save();
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = '#6666aa';
+    ctx.strokeStyle = '#6666aa';
     ctx.lineWidth = 2;
     ctx.strokeRect((t.x-0.8)*SCALE, (t.z-0.8)*SCALE, 1.6*SCALE, 1.6*SCALE);
+    ctx.restore();
+    // Corner dots
+    const cs = 0.8 * SCALE;
+    ctx.fillStyle = '#8888cc';
+    for(const [cx2,cz2] of [[-1,-1],[1,-1],[-1,1],[1,1]]) {
+      ctx.beginPath();
+      ctx.arc((t.x+cx2*0.7)*SCALE, (t.z+cz2*0.7)*SCALE, 3, 0, Math.PI*2);
+      ctx.fill();
+    }
   }
 
-  // Walls with neon glow
-  const wallColors = ['#00ffff','#ff00ff'];
+  // Walls — improved with beveled edges and stronger glow
+  const wallColors = ['#00ddee','#dd44ff'];
   for(let wi=0; wi<walls.length; wi++) {
     const w = walls[wi];
-    ctx.fillStyle = '#1a1a35';
+    // Wall face
+    const wGrad = ctx.createLinearGradient(w.x*SCALE, w.z*SCALE, (w.x+w.w)*SCALE, (w.z+w.h)*SCALE);
+    wGrad.addColorStop(0, '#181830');
+    wGrad.addColorStop(0.5, '#222245');
+    wGrad.addColorStop(1, '#181830');
+    ctx.fillStyle = wGrad;
     ctx.fillRect(w.x*SCALE, w.z*SCALE, w.w*SCALE, w.h*SCALE);
+    // Neon edge glow
     ctx.save();
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 12;
     ctx.shadowColor = wallColors[wi%2];
     ctx.strokeStyle = wallColors[wi%2];
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2;
     ctx.strokeRect(w.x*SCALE, w.z*SCALE, w.w*SCALE, w.h*SCALE);
     ctx.restore();
-  }
-
-  // Neon wall lights (bigger, glowier)
-  for(const nl of neonLights) {
+    // Inner highlight line
     ctx.save();
-    ctx.shadowBlur = 25;
-    ctx.shadowColor = nl.color;
-    ctx.fillStyle = nl.color;
-    ctx.beginPath();
-    ctx.arc(nl.x*SCALE, nl.z*SCALE, 5, 0, Math.PI*2);
-    ctx.fill();
-    // Extra glow halo
-    ctx.globalAlpha = 0.3;
-    ctx.beginPath();
-    ctx.arc(nl.x*SCALE, nl.z*SCALE, 12, 0, Math.PI*2);
-    ctx.fill();
+    ctx.globalAlpha = 0.15;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(w.x*SCALE+3, w.z*SCALE+3, w.w*SCALE-6, w.h*SCALE-6);
     ctx.restore();
   }
 
@@ -2352,19 +2355,7 @@ function render() {
     ctx.restore();
   }
 
-  // Shield pickups (with label)
-  for(const s of shieldPickups) {
-    const bob = Math.sin(Date.now()*0.004)*0.1*SCALE;
-    drawHexagon(s.x*SCALE, s.z*SCALE + bob, 0.4*SCALE, s.rot, '#00ffff');
-    ctx.save();
-    ctx.font = 'bold 12px "Courier New", monospace';
-    ctx.fillStyle = '#00ffff';
-    ctx.shadowBlur = 8;
-    ctx.shadowColor = '#00ffff';
-    ctx.textAlign = 'center';
-    ctx.fillText('SHIELD', s.x*SCALE, s.z*SCALE + bob - 0.65*SCALE);
-    ctx.restore();
-  }
+  // Shield pickups removed (now shop-only)
 
   // NBCs
   for(const nbc of nbcs) {
@@ -2385,24 +2376,48 @@ function render() {
     } else {
       color = '#ff3333';
     }
-    // Darker fill underneath
+    // Body with gradient
     ctx.save();
-    ctx.fillStyle = nbc.boss ? '#660000' : (nbc.elite ? '#663300' : '#661111');
+    const nbcGrad = ctx.createRadialGradient(nbc.x*SCALE, nbc.z*SCALE, 0, nbc.x*SCALE, nbc.z*SCALE, size*SCALE);
+    nbcGrad.addColorStop(0, color);
+    nbcGrad.addColorStop(0.6, color);
+    nbcGrad.addColorStop(1, nbc.boss ? '#440000' : (nbc.elite ? '#442200' : '#330808'));
+    ctx.fillStyle = nbcGrad;
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = color;
     ctx.beginPath();
     ctx.arc(nbc.x*SCALE, nbc.z*SCALE, size*SCALE, 0, Math.PI*2);
     ctx.fill();
     ctx.restore();
-    drawGlow(nbc.x*SCALE, nbc.z*SCALE, size*SCALE*0.85, color);
-    // Outer red glow ring for visibility
+    // Outer glow ring
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
-    ctx.shadowBlur = 15;
-    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = color;
+    ctx.globalAlpha = 0.6 + 0.4 * Math.sin(Date.now() * 0.008);
     ctx.beginPath();
-    ctx.arc(nbc.x*SCALE, nbc.z*SCALE, size*SCALE*1.1, 0, Math.PI*2);
+    ctx.arc(nbc.x*SCALE, nbc.z*SCALE, size*SCALE*1.15, 0, Math.PI*2);
     ctx.stroke();
     ctx.restore();
+    // Eye(s) — face player
+    if(!nbc.boss) {
+      const eAngle = Math.atan2(player.z - nbc.z, player.x - nbc.x);
+      const eyeD = size * SCALE * 0.35;
+      const eyeR = nbc.elite ? 5 : 3;
+      ctx.save();
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowBlur = 4;
+      ctx.shadowColor = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(nbc.x*SCALE + Math.cos(eAngle)*eyeD, nbc.z*SCALE + Math.sin(eAngle)*eyeD, eyeR, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = '#000000';
+      ctx.beginPath();
+      ctx.arc(nbc.x*SCALE + Math.cos(eAngle)*eyeD*1.1, nbc.z*SCALE + Math.sin(eAngle)*eyeD*1.1, eyeR*0.5, 0, Math.PI*2);
+      ctx.fill();
+      ctx.restore();
+    }
 
     // Elite lightning effect (jagged lines around them)
     if(nbc.elite && nbc.flashTime <= 0) {
@@ -2571,19 +2586,32 @@ function render() {
     ctx.restore();
   }
 
-  // Lasers
+  // Lasers — improved with core + glow
   for(const l of lasers) {
-    const len = 0.4 * SCALE;
+    const len = 0.45 * SCALE;
     const angle = Math.atan2(l.dz, l.dx);
     const ex = l.x*SCALE - Math.cos(angle)*len/2;
     const ey = l.z*SCALE - Math.sin(angle)*len/2;
     const sx = l.x*SCALE + Math.cos(angle)*len/2;
     const sy = l.z*SCALE + Math.sin(angle)*len/2;
+    // Outer glow
     ctx.save();
-    ctx.shadowBlur = 12;
+    ctx.shadowBlur = 16;
     ctx.shadowColor = l.color;
     ctx.strokeStyle = l.color;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 5;
+    ctx.globalAlpha = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    ctx.restore();
+    // Core
+    ctx.save();
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = l.color;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(sx, sy);
     ctx.lineTo(ex, ey);
