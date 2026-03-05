@@ -1108,7 +1108,7 @@ function gameOver() {
 
 // ===== TOUCH CONTROLS =====
 function handleTouchStart(e) {
-  if(gameState !== 'playing') return;
+  if(gameState !== 'playing' && gameState !== 'maze') return;
   e.preventDefault();
   for(const t of e.changedTouches) {
     const hw = window.innerWidth / 2;
@@ -1133,7 +1133,7 @@ function handleTouchStart(e) {
 }
 
 function handleTouchMove(e) {
-  if(gameState !== 'playing') return;
+  if(gameState !== 'playing' && gameState !== 'maze') return;
   e.preventDefault();
   for(const t of e.changedTouches) {
     if(t.identifier === joystickTouch) {
@@ -1169,7 +1169,7 @@ function handleTouchMove(e) {
 }
 
 function handleTouchEnd(e) {
-  if(gameState !== 'playing') return;
+  if(gameState !== 'playing' && gameState !== 'maze') return;
   e.preventDefault();
   for(const t of e.changedTouches) {
     if(t.identifier === joystickTouch) {
@@ -1884,6 +1884,12 @@ function startMazeRace() {
     shotCD: 0
   };
   gameState = 'maze';
+  // Reset touch controls for maze
+  joystickTouch = null;
+  joystickActive = false;
+  joystickDir.x = 0; joystickDir.y = 0;
+  aimTouch = null;
+  aimActive = false;
   document.getElementById('levelcomplete-screen').classList.add('hidden');
   document.getElementById('hud').style.display = 'none';
   document.getElementById('pause-btn').style.display = 'none';
