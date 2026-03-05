@@ -1,5 +1,4 @@
-.git
-.wrangler
+.git/
+.wrangler/
 nixpacks.toml
 FEATURES.md
-.wranglerignore

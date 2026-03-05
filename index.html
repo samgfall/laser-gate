@@ -1431,8 +1431,8 @@ function update(dt) {
     }
   }
 
-  // AUTO weapon continuous fire
-  if(aimActive && getWeapon().type === 'AUTO' && player) {
+  // Continuous fire on touch (AUTO weapons and MELEE)
+  if(aimActive && (getWeapon().type === 'AUTO' || getWeapon().type === 'MELEE') && player) {
     // Fire toward the aim touch point (screen → world)
     const ox2 = canvas.width/2 - camX * SCALE;
     const oy2 = canvas.height/2 - camY * SCALE;
